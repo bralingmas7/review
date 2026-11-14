@@ -1,0 +1,66 @@
+===== LAPORAN PIN DEPENDENSI =====
+Tanggal: Sat Nov 14 23:09:54 WIB 2026
+Backup: backup_sebelum_pin_ffi_20261114_230953/pubspec.yaml
+
+===== SDK DAN DEPENDENSI =====
+4-version: 0.1.0+1
+5-
+6:environment:
+7:  sdk: ">=3.3.0 <4.0.0"
+8-
+9-dependencies:
+10-  flutter:
+11:    sdk: flutter
+12-  sqflite: ^2.3.3
+13-  path: ^1.9.0
+14-  url_launcher: ^6.3.0
+15-  file_picker: ^12.3.0
+16-
+17-  google_sign_in: ^7.2.0
+18-  googleapis: ^19.0.0
+19-  extension_google_sign_in_as_googleapis_auth: ^3.0.0
+20-  cryptography: ^2.7.0
+21-
+22:dev_dependencies:
+23-  flutter_test:
+24:    sdk: flutter
+25:  sqflite_common_ffi: 2.3.3
+26-
+27-flutter:
+28-  uses-material-design: true
+
+===== PEMERIKSAAN DIFF =====
+diff --git a/pubspec.yaml b/pubspec.yaml
+index 5ba18fb..b66cbca 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -22,6 +22,7 @@ dependencies:
+ dev_dependencies:
+   flutter_test:
+     sdk: flutter
++  sqflite_common_ffi: 2.3.3
+ 
+ flutter:
+   uses-material-design: true
+
+===== STATUS GIT =====
+ M lib/db.dart
+ M lib/screens/settings_screen.dart
+ M pubspec.yaml
+?? backup_google_login_20261114_185251/
+?? backup_sebelum_cloud_ui_20261114_225058/
+?? backup_sebelum_cloud_ui_20261114_225846/
+?? backup_sebelum_google_20261114_184301/
+?? backup_sebelum_integrasi_drive_20261114_221515/
+?? backup_sebelum_pin_ffi_20261114_230953/
+?? backup_sebelum_settings_20261114_164203/
+?? backup_sebelum_test_restore_20261114_230544/
+?? backup_sebelum_update_siklus/
+?? backup_status_google_20261114_192221/
+?? patchv3.py
+?? test/restore_database_test.dart
+
+===== FILE TEST =====
+restore_database_test.dart: ADA
+
+===== SELESAI =====

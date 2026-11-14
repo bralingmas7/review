@@ -1,231 +1,47 @@
-===== PERUBAHAN TEST RESTORE =====
-Sat Nov 14 23:06:50 WIB 2026
+===== LAPORAN PIN DEPENDENSI =====
+Tanggal: Sat Nov 14 23:09:54 WIB 2026
+Backup: backup_sebelum_pin_ffi_20261114_230953/pubspec.yaml
 
-===== DIFF CHECK =====
+===== SDK DAN DEPENDENSI =====
+4-version: 0.1.0+1
+5-
+6:environment:
+7:  sdk: ">=3.3.0 <4.0.0"
+8-
+9-dependencies:
+10-  flutter:
+11:    sdk: flutter
+12-  sqflite: ^2.3.3
+13-  path: ^1.9.0
+14-  url_launcher: ^6.3.0
+15-  file_picker: ^12.3.0
+16-
+17-  google_sign_in: ^7.2.0
+18-  googleapis: ^19.0.0
+19-  extension_google_sign_in_as_googleapis_auth: ^3.0.0
+20-  cryptography: ^2.7.0
+21-
+22:dev_dependencies:
+23-  flutter_test:
+24:    sdk: flutter
+25:  sqflite_common_ffi: 2.3.3
+26-
+27-flutter:
+28-  uses-material-design: true
 
-===== DIFF DB =====
-diff --git a/lib/db.dart b/lib/db.dart
-index 4ed19ba..95cc7ea 100644
---- a/lib/db.dart
-+++ b/lib/db.dart
-@@ -5,6 +5,8 @@ import 'models.dart';
- 
- class AppDb {
-   AppDb._();
-+  AppDb.forTesting(Database database) : _db = database;
-+
-   static final AppDb instance = AppDb._();
- 
-   static const backupFormat = 'buku_utang_warung_backup';
-@@ -22,33 +24,36 @@ class AppDb {
-       onConfigure: (db) async {
-         await db.execute('PRAGMA foreign_keys = ON');
-       },
--      onCreate: (db, version) async {
--        await db.execute('''
--          CREATE TABLE customers(
--            id INTEGER PRIMARY KEY AUTOINCREMENT,
--            name TEXT NOT NULL,
--            phone TEXT NOT NULL DEFAULT '',
--            note TEXT NOT NULL DEFAULT '',
--            credit_limit INTEGER NOT NULL DEFAULT 0,
--            created_at INTEGER NOT NULL
--          )
--        ''');
--        await db.execute('''
--          CREATE TABLE transactions(
--            id INTEGER PRIMARY KEY AUTOINCREMENT,
--            customer_id INTEGER NOT NULL,
--            type TEXT NOT NULL,
--            amount INTEGER NOT NULL,
--            note TEXT NOT NULL DEFAULT '',
--            date INTEGER NOT NULL,
--            due_date INTEGER,
--            FOREIGN KEY(customer_id) REFERENCES customers(id) ON DELETE CASCADE
--          )
--        ''');
--        await db.execute(
--          'CREATE INDEX idx_txn_customer ON transactions(customer_id)',
--        );
--      },
-+      onCreate: (db, version) => createSchema(db),
-+    );
-+  }
-+
-+  // Satu skema dipakai aplikasi dan test agar tidak berbeda.
-+  static Future<void> createSchema(DatabaseExecutor db) async {
-+    await db.execute('''
-+      CREATE TABLE customers(
-+        id INTEGER PRIMARY KEY AUTOINCREMENT,
-+        name TEXT NOT NULL,
-+        phone TEXT NOT NULL DEFAULT '',
-+        note TEXT NOT NULL DEFAULT '',
-+        credit_limit INTEGER NOT NULL DEFAULT 0,
-+        created_at INTEGER NOT NULL
-+      )
-+    ''');
-+    await db.execute('''
-+      CREATE TABLE transactions(
-+        id INTEGER PRIMARY KEY AUTOINCREMENT,
-+        customer_id INTEGER NOT NULL,
-+        type TEXT NOT NULL,
-+        amount INTEGER NOT NULL,
-+        note TEXT NOT NULL DEFAULT '',
-+        date INTEGER NOT NULL,
-+        due_date INTEGER,
-+        FOREIGN KEY(customer_id) REFERENCES customers(id) ON DELETE CASCADE
-+      )
-+    ''');
-+    await db.execute(
-+      'CREATE INDEX idx_txn_customer ON transactions(customer_id)',
-     );
-   }
- 
-
-===== DIFF PUBSPEC =====
+===== PEMERIKSAAN DIFF =====
 diff --git a/pubspec.yaml b/pubspec.yaml
-index 5ba18fb..ed66d6d 100644
+index 5ba18fb..b66cbca 100644
 --- a/pubspec.yaml
 +++ b/pubspec.yaml
 @@ -22,6 +22,7 @@ dependencies:
  dev_dependencies:
    flutter_test:
      sdk: flutter
-+  sqflite_common_ffi: ^2.3.7+1
++  sqflite_common_ffi: 2.3.3
  
  flutter:
    uses-material-design: true
-
-===== TEST BARU =====
-import 'package:flutter_test/flutter_test.dart';
-import 'package:sqflite/sqflite.dart';
-import 'package:sqflite_common_ffi/sqflite_ffi.dart';
-
-import '../lib/db.dart';
-
-void main() {
-  late Database rawDb;
-  late AppDb appDb;
-
-  setUpAll(() {
-    sqfliteFfiInit();
-  });
-
-  setUp(() async {
-    rawDb = await databaseFactoryFfi.openDatabase(
-      inMemoryDatabasePath,
-      options: OpenDatabaseOptions(
-        version: 1,
-        onConfigure: (db) async {
-          await db.execute('PRAGMA foreign_keys = ON');
-        },
-        onCreate: (db, version) => AppDb.createSchema(db),
-      ),
-    );
-    appDb = AppDb.forTesting(rawDb);
-  });
-
-  tearDown(() async {
-    await rawDb.close();
-  });
-
-  Future<void> seedOldData() async {
-    await rawDb.insert('customers', {
-      'id': 1,
-      'name': 'Data Lama',
-      'phone': '',
-      'note': '',
-      'credit_limit': 0,
-      'created_at': 1700000000000,
-    });
-    await rawDb.insert('transactions', {
-      'id': 1,
-      'customer_id': 1,
-      'type': 'utang',
-      'amount': 100,
-      'note': 'Transaksi lama',
-      'date': 1700000000000,
-      'due_date': null,
-    });
-  }
-
-  Map<String, dynamic> validBackup({int amount = 500}) => {
-        'format': AppDb.backupFormat,
-        'version': AppDb.backupVersion,
-        'exported_at': '2026-11-14T00:00:00Z',
-        'customers': [
-          {
-            'id': 2,
-            'name': 'Data Backup',
-            'phone': '08123456789',
-            'note': 'Hasil restore',
-            'credit_limit': 1000,
-            'created_at': 1700000001000,
-          },
-        ],
-        'transactions': [
-          {
-            'id': 2,
-            'customer_id': 2,
-            'type': 'utang',
-            'amount': amount,
-            'note': 'Transaksi backup',
-            'date': 1700000001000,
-            'due_date': null,
-          },
-        ],
-      };
-
-  test('restore berhasil mengganti seluruh data lama', () async {
-    await seedOldData();
-
-    await appDb.restoreBackup(validBackup());
-
-    expect(await appDb.customer(1), isNull);
-    expect((await appDb.customer(2))?.name, 'Data Backup');
-
-    final txns = await appDb.allTxns();
-    expect(txns, hasLength(1));
-    expect(txns.single.amount, 500);
-    expect(txns.single.customerId, 2);
-  });
-
-  test('backup tidak valid ditolak tanpa mengubah data lama', () async {
-    await seedOldData();
-    final invalid = validBackup()..['version'] = 999;
-
-    await expectLater(
-      appDb.restoreBackup(invalid),
-      throwsA(isA<FormatException>()),
-    );
-
-    expect((await appDb.customer(1))?.name, 'Data Lama');
-    expect(await appDb.customer(2), isNull);
-    expect((await appDb.allTxns()).single.amount, 100);
-  });
-
-  test('kegagalan insert membatalkan seluruh restore', () async {
-    await seedOldData();
-
-    await rawDb.execute('''
-      CREATE TRIGGER reject_restore_transaction
-      BEFORE INSERT ON transactions
-      WHEN NEW.amount = 9999
-      BEGIN
-        SELECT RAISE(ABORT, 'simulasi kegagalan insert');
-      END
-    ''');
-
-    await expectLater(
-      appDb.restoreBackup(validBackup(amount: 9999)),
-      throwsA(isA<Exception>()),
-    );
-
-    expect((await appDb.customer(1))?.name, 'Data Lama');
-    expect(await appDb.customer(2), isNull);
-    expect((await appDb.allTxns()).single.amount, 100);
-  });
-}
 
 ===== STATUS GIT =====
  M lib/db.dart
@@ -236,9 +52,15 @@ void main() {
 ?? backup_sebelum_cloud_ui_20261114_225846/
 ?? backup_sebelum_google_20261114_184301/
 ?? backup_sebelum_integrasi_drive_20261114_221515/
+?? backup_sebelum_pin_ffi_20261114_230953/
 ?? backup_sebelum_settings_20261114_164203/
 ?? backup_sebelum_test_restore_20261114_230544/
 ?? backup_sebelum_update_siklus/
 ?? backup_status_google_20261114_192221/
 ?? patchv3.py
 ?? test/restore_database_test.dart
+
+===== FILE TEST =====
+restore_database_test.dart: ADA
+
+===== SELESAI =====
