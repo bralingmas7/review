@@ -1,0 +1,257 @@
+===== AUDIT RESTORE GOOGLE DRIVE =====
+Sat Nov 14 23:02:43 WIB 2026
+
+===== RESTORE DATABASE =====
+188-          row['note'] is! String ||
+189-          row['date'] is! int ||
+190-          (dueDate != null && dueDate is! int)) {
+191-        throw const FormatException('Data transaksi tidak lengkap atau rusak');
+192-      }
+193-    }
+194-  }
+195-
+196-  // Penggantian seluruh data dilakukan dalam satu transaksi SQLite.
+197-  // Jika satu insert gagal, SQLite membatalkan seluruh proses.
+198:  Future<void> restoreBackup(Map<String, dynamic> data) async {
+199-    validateBackupData(data);
+200-
+201-    final customers = _rows(data['customers'], 'pelanggan');
+202-    final transactions = _rows(data['transactions'], 'transaksi');
+203-    final db = await _database;
+204-
+205-    await db.transaction((txn) async {
+206-      await txn.delete('transactions');
+207-      await txn.delete('customers');
+208-
+209-      for (final row in customers) {
+210-        await txn.insert('customers', row);
+211-      }
+212-
+213-      for (final row in transactions) {
+214-        await txn.insert('transactions', row);
+215-      }
+216-    });
+217-  }
+218-}
+
+===== VALIDASI BACKUP =====
+134-      return Map<String, Object?>.from(item);
+135-    }).toList();
+136-  }
+137-
+138-  // Validasi lengkap dilakukan sebelum database boleh diubah.
+139:  static void validateBackupData(Map<String, dynamic> data) {
+140-    if (data['format'] != backupFormat) {
+141-      throw const FormatException('Format file bukan backup Buku Utang Warung');
+142-    }
+143-    if (data['version'] != backupVersion) {
+144-      throw const FormatException('Versi backup tidak didukung');
+145-    }
+146-
+147-    final customers = _rows(data['customers'], 'pelanggan');
+148-    final transactions = _rows(data['transactions'], 'transaksi');
+149-
+150-    final customerIds = <int>{};
+151-
+152-    for (final row in customers) {
+153-      final id = row['id'];
+154-      if (id is! int || id <= 0 || !customerIds.add(id)) {
+155-        throw const FormatException('ID pelanggan tidak valid atau duplikat');
+156-      }
+157-      if (row['name'] is! String ||
+158-          row['phone'] is! String ||
+159-          row['note'] is! String ||
+160-          row['credit_limit'] is! int ||
+161-          (row['credit_limit'] as int) < 0 ||
+162-          row['created_at'] is! int) {
+163-        throw const FormatException('Data pelanggan tidak lengkap atau rusak');
+164-      }
+165-    }
+166-
+167-    final txnIds = <int>{};
+168-
+169-    for (final row in transactions) {
+170-      final id = row['id'];
+171-      final customerId = row['customer_id'];
+172-      final type = row['type'];
+173-      final amount = row['amount'];
+174-      final dueDate = row['due_date'];
+175-
+176-      if (id is! int || id <= 0 || !txnIds.add(id)) {
+177-        throw const FormatException('ID transaksi tidak valid atau duplikat');
+178-      }
+179-      if (customerId is! int || !customerIds.contains(customerId)) {
+180-        throw const FormatException(
+181-          'Transaksi mengacu ke pelanggan yang tidak ditemukan',
+182-        );
+183-      }
+184-      if (type != 'utang' && type != 'bayar') {
+185-        throw const FormatException('Jenis transaksi tidak dikenal');
+186-      }
+187-      if (amount is! int || amount <= 0 ||
+188-          row['note'] is! String ||
+189-          row['date'] is! int ||
+190-          (dueDate != null && dueDate is! int)) {
+191-        throw const FormatException('Data transaksi tidak lengkap atau rusak');
+192-      }
+193-    }
+194-  }
+195-
+196-  // Penggantian seluruh data dilakukan dalam satu transaksi SQLite.
+197-  // Jika satu insert gagal, SQLite membatalkan seluruh proses.
+198-  Future<void> restoreBackup(Map<String, dynamic> data) async {
+199:    validateBackupData(data);
+200-
+201-    final customers = _rows(data['customers'], 'pelanggan');
+202-    final transactions = _rows(data['transactions'], 'transaksi');
+203-    final db = await _database;
+204-
+205-    await db.transaction((txn) async {
+206-      await txn.delete('transactions');
+207-      await txn.delete('customers');
+208-
+209-      for (final row in customers) {
+210-        await txn.insert('customers', row);
+211-      }
+212-
+213-      for (final row in transactions) {
+214-        await txn.insert('transactions', row);
+215-      }
+216-    });
+217-  }
+218-}
+
+===== CLOUD RESTORE UI =====
+  Future<void> _cloudRestore() async {
+    if (_busy || _googleEmail == null) return;
+
+    setState(() => _busy = true);
+
+    try {
+      final files =
+          await GoogleDriveService.instance.listEncryptedBackups();
+
+      if (!mounted) return;
+
+      if (files.isEmpty) {
+        _message('Belum ada backup Buku Utang Warung di Google Drive.');
+        return;
+      }
+
+      final selectedIndex = await showDialog<int>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('Pilih backup cloud'),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: ListView(
+              shrinkWrap: true,
+              children: [
+                for (var i = 0; i < files.length; i++)
+                  ListTile(
+                    leading: const Icon(Icons.cloud_download_outlined),
+                    title: Text(files[i].name ?? 'Backup tanpa nama'),
+                    subtitle: Text(
+                      files[i].createdTime?.toLocal().toString() ??
+                          'Waktu tidak tersedia',
+                    ),
+                    onTap: () => Navigator.pop(dialogContext, i),
+                  ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Batal'),
+            ),
+          ],
+        ),
+      );
+
+      if (selectedIndex == null || !mounted) return;
+
+      final selectedFile = files[selectedIndex];
+      final fileId = selectedFile.id;
+      if (fileId == null || fileId.isEmpty) {
+        throw StateError('ID backup Google Drive tidak tersedia.');
+      }
+
+      final password = await _askCloudPassword(confirm: false);
+      if (password == null || !mounted) return;
+
+      final encrypted =
+          await GoogleDriveService.instance.downloadEncryptedBackup(fileId);
+
+      final decoded =
+          await BackupCryptoService.instance.decryptBackup(
+        encrypted,
+        password,
+      );
+
+      AppDb.validateBackupData(decoded);
+
+      final customerCount = (decoded['customers'] as List).length;
+      final transactionCount = (decoded['transactions'] as List).length;
+
+      if (!mounted) return;
+
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('Pulihkan backup cloud?'),
+          content: Text(
+            'Data lokal saat ini akan DIGANTI dengan isi backup cloud.\n\n'
+            'Pelanggan: $customerCount\n'
+            'Transaksi: $transactionCount\n\n'
+            'Pastikan Anda sudah memiliki salinan data saat ini.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Batal'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('Ganti dan pulihkan'),
+            ),
+          ],
+        ),
+      );
+
+      if (confirmed != true || !mounted) return;
+
+      await AppDb.instance.restoreBackup(decoded);
+      _message('Restore dari Google Drive berhasil.');
+    } catch (e) {
+      _message('Restore Google Drive gagal. Data lokal tidak diganti: $e');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+
+===== TEST DATABASE DAN BACKUP =====
+test/utils_test.dart
+test/backup_crypto_test.dart
+
+===== TEST RESTORE =====
+test/backup_crypto_test.dart:32:    final restored = await crypto.decryptBackup(
+test/backup_crypto_test.dart:55:      () => crypto.decryptBackup(encrypted, 'PasswordSalah2026'),
+test/backup_crypto_test.dart:76:      () => crypto.decryptBackup(tampered, 'PasswordBenar2026'),
+
+===== STATUS GIT =====
+ M lib/screens/settings_screen.dart
+?? backup_google_login_20261114_185251/
+?? backup_sebelum_cloud_ui_20261114_225058/
+?? backup_sebelum_cloud_ui_20261114_225846/
+?? backup_sebelum_google_20261114_184301/
+?? backup_sebelum_integrasi_drive_20261114_221515/
+?? backup_sebelum_settings_20261114_164203/
+?? backup_sebelum_update_siklus/
+?? backup_status_google_20261114_192221/
+?? patchv3.py
+
+===== DIFF CHECK =====
