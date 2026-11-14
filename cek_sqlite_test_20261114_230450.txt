@@ -1,0 +1,55 @@
+===== SQLITE TEST COMPATIBILITY =====
+Sat Nov 14 23:04:50 WIB 2026
+
+===== DEPENDENSI SQLITE =====
+pubspec.yaml-9-dependencies:
+pubspec.yaml-10-  flutter:
+pubspec.yaml-11-    sdk: flutter
+pubspec.yaml:12:  sqflite: ^2.3.3
+pubspec.yaml-13-  path: ^1.9.0
+pubspec.yaml-14-  url_launcher: ^6.3.0
+pubspec.yaml-15-  file_picker: ^12.3.0
+pubspec.yaml-16-
+pubspec.yaml-17-  google_sign_in: ^7.2.0
+pubspec.yaml-18-  googleapis: ^19.0.0
+pubspec.yaml-19-  extension_google_sign_in_as_googleapis_auth: ^3.0.0
+pubspec.yaml-20-  cryptography: ^2.7.0
+grep: pubspec.lock: No such file or directory
+
+===== KONFIGURASI WORKFLOW =====
+126-          path.write_text(text)
+127-          print("Signing release berhasil dikonfigurasi")
+128-          PY
+129-
+130-      - name: Install dependency
+131:        run: flutter pub get
+132-
+133-      - name: Jalankan test
+134:        run: flutter test
+135-
+136-      # Build menggunakan keystore permanen
+137-      - name: Build APK release
+138-        env:
+139-          KEYSTORE_FILE: upload-keystore.jks
+140-          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+141-          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+142-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+143-        run: |
+144-          set -euo pipefail
+145-          flutter build apk --release
+146-
+
+===== KONSTRUKTOR APPDB =====
+grep: Unmatched ( or \(
+
+===== STATUS GIT =====
+ M lib/screens/settings_screen.dart
+?? backup_google_login_20261114_185251/
+?? backup_sebelum_cloud_ui_20261114_225058/
+?? backup_sebelum_cloud_ui_20261114_225846/
+?? backup_sebelum_google_20261114_184301/
+?? backup_sebelum_integrasi_drive_20261114_221515/
+?? backup_sebelum_settings_20261114_164203/
+?? backup_sebelum_update_siklus/
+?? backup_status_google_20261114_192221/
+?? patchv3.py
