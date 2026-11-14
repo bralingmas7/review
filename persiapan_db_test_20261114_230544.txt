@@ -1,0 +1,499 @@
+===== BACKUP DATABASE =====
+backup_sebelum_test_restore_20261114_230544
+total 16
+-rw-rw----. 1 u0_a523 u0_a523 6825 Nov 14 16:42 db.dart
+-rw-rw----. 1 u0_a523 u0_a523 5956 Nov 14 16:07 models.dart
+
+===== SELURUH DB.DART =====
+import 'package:path/path.dart' as p;
+import 'package:sqflite/sqflite.dart';
+
+import 'models.dart';
+
+class AppDb {
+  AppDb._();
+  static final AppDb instance = AppDb._();
+
+  static const backupFormat = 'buku_utang_warung_backup';
+  static const backupVersion = 1;
+
+  Database? _db;
+
+  Future<Database> get _database async => _db ??= await _open();
+
+  Future<Database> _open() async {
+    final path = p.join(await getDatabasesPath(), 'buku_utang.db');
+    return openDatabase(
+      path,
+      version: 1,
+      onConfigure: (db) async {
+        await db.execute('PRAGMA foreign_keys = ON');
+      },
+      onCreate: (db, version) async {
+        await db.execute('''
+          CREATE TABLE customers(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            phone TEXT NOT NULL DEFAULT '',
+            note TEXT NOT NULL DEFAULT '',
+            credit_limit INTEGER NOT NULL DEFAULT 0,
+            created_at INTEGER NOT NULL
+          )
+        ''');
+        await db.execute('''
+          CREATE TABLE transactions(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            customer_id INTEGER NOT NULL,
+            type TEXT NOT NULL,
+            amount INTEGER NOT NULL,
+            note TEXT NOT NULL DEFAULT '',
+            date INTEGER NOT NULL,
+            due_date INTEGER,
+            FOREIGN KEY(customer_id) REFERENCES customers(id) ON DELETE CASCADE
+          )
+        ''');
+        await db.execute(
+          'CREATE INDEX idx_txn_customer ON transactions(customer_id)',
+        );
+      },
+    );
+  }
+
+  Future<List<Customer>> customers() async {
+    final db = await _database;
+    final rows = await db.query('customers', orderBy: 'name COLLATE NOCASE');
+    return rows.map(Customer.fromMap).toList();
+  }
+
+  Future<Customer?> customer(int id) async {
+    final db = await _database;
+    final rows = await db.query('customers', where: 'id = ?', whereArgs: [id]);
+    return rows.isEmpty ? null : Customer.fromMap(rows.first);
+  }
+
+  Future<int> insertCustomer(Customer c) async {
+    final db = await _database;
+    return db.insert('customers', c.toMap());
+  }
+
+  Future<void> updateCustomer(Customer c) async {
+    final db = await _database;
+    await db.update('customers', c.toMap(), where: 'id = ?', whereArgs: [c.id]);
+  }
+
+  Future<void> deleteCustomer(int id) async {
+    final db = await _database;
+    await db.delete('transactions', where: 'customer_id = ?', whereArgs: [id]);
+    await db.delete('customers', where: 'id = ?', whereArgs: [id]);
+  }
+
+  Future<List<Txn>> allTxns() async {
+    final db = await _database;
+    final rows = await db.query('transactions');
+    return rows.map(Txn.fromMap).toList();
+  }
+
+  Future<List<Txn>> txnsFor(int customerId) async {
+    final db = await _database;
+    final rows = await db.query(
+      'transactions',
+      where: 'customer_id = ?',
+      whereArgs: [customerId],
+      orderBy: 'date ASC, id ASC',
+    );
+    return rows.map(Txn.fromMap).toList();
+  }
+
+  Future<int> insertTxn(Txn t) async {
+    final db = await _database;
+    return db.insert('transactions', t.toMap());
+  }
+
+  Future<void> deleteTxn(int id) async {
+    final db = await _database;
+    await db.delete('transactions', where: 'id = ?', whereArgs: [id]);
+  }
+
+  // Membuat snapshot JSON tanpa mengubah database aktif.
+  Future<Map<String, Object?>> exportBackup() async {
+    final db = await _database;
+    return {
+      'format': backupFormat,
+      'version': backupVersion,
+      'exported_at': DateTime.now().toUtc().toIso8601String(),
+      'customers': await db.query('customers', orderBy: 'id ASC'),
+      'transactions': await db.query('transactions', orderBy: 'id ASC'),
+    };
+  }
+
+  static List<Map<String, Object?>> _rows(
+    Object? value,
+    String label,
+  ) {
+    if (value is! List) {
+      throw FormatException('Bagian $label bukan daftar yang valid');
+    }
+
+    return value.map((item) {
+      if (item is! Map) {
+        throw FormatException('Ada data $label yang tidak valid');
+      }
+      return Map<String, Object?>.from(item);
+    }).toList();
+  }
+
+  // Validasi lengkap dilakukan sebelum database boleh diubah.
+  static void validateBackupData(Map<String, dynamic> data) {
+    if (data['format'] != backupFormat) {
+      throw const FormatException('Format file bukan backup Buku Utang Warung');
+    }
+    if (data['version'] != backupVersion) {
+      throw const FormatException('Versi backup tidak didukung');
+    }
+
+    final customers = _rows(data['customers'], 'pelanggan');
+    final transactions = _rows(data['transactions'], 'transaksi');
+
+    final customerIds = <int>{};
+
+    for (final row in customers) {
+      final id = row['id'];
+      if (id is! int || id <= 0 || !customerIds.add(id)) {
+        throw const FormatException('ID pelanggan tidak valid atau duplikat');
+      }
+      if (row['name'] is! String ||
+          row['phone'] is! String ||
+          row['note'] is! String ||
+          row['credit_limit'] is! int ||
+          (row['credit_limit'] as int) < 0 ||
+          row['created_at'] is! int) {
+        throw const FormatException('Data pelanggan tidak lengkap atau rusak');
+      }
+    }
+
+    final txnIds = <int>{};
+
+    for (final row in transactions) {
+      final id = row['id'];
+      final customerId = row['customer_id'];
+      final type = row['type'];
+      final amount = row['amount'];
+      final dueDate = row['due_date'];
+
+      if (id is! int || id <= 0 || !txnIds.add(id)) {
+        throw const FormatException('ID transaksi tidak valid atau duplikat');
+      }
+      if (customerId is! int || !customerIds.contains(customerId)) {
+        throw const FormatException(
+          'Transaksi mengacu ke pelanggan yang tidak ditemukan',
+        );
+      }
+      if (type != 'utang' && type != 'bayar') {
+        throw const FormatException('Jenis transaksi tidak dikenal');
+      }
+      if (amount is! int || amount <= 0 ||
+          row['note'] is! String ||
+          row['date'] is! int ||
+          (dueDate != null && dueDate is! int)) {
+        throw const FormatException('Data transaksi tidak lengkap atau rusak');
+      }
+    }
+  }
+
+  // Penggantian seluruh data dilakukan dalam satu transaksi SQLite.
+  // Jika satu insert gagal, SQLite membatalkan seluruh proses.
+  Future<void> restoreBackup(Map<String, dynamic> data) async {
+    validateBackupData(data);
+
+    final customers = _rows(data['customers'], 'pelanggan');
+    final transactions = _rows(data['transactions'], 'transaksi');
+    final db = await _database;
+
+    await db.transaction((txn) async {
+      await txn.delete('transactions');
+      await txn.delete('customers');
+
+      for (final row in customers) {
+        await txn.insert('customers', row);
+      }
+
+      for (final row in transactions) {
+        await txn.insert('transactions', row);
+      }
+    });
+  }
+}
+
+===== MODELS DART =====
+enum TxnType { utang, bayar }
+
+enum DebtStatus { lunas, lancar, mendekati, telat }
+
+DateTime dateOnly(DateTime d) => DateTime(d.year, d.month, d.day);
+
+class Customer {
+  final int? id;
+  final String name;
+  final String phone;
+  final String note;
+
+  /// Batas utang dalam rupiah. 0 berarti tanpa batas.
+  final int creditLimit;
+  final DateTime createdAt;
+
+  const Customer({
+    this.id,
+    required this.name,
+    this.phone = '',
+    this.note = '',
+    this.creditLimit = 0,
+    required this.createdAt,
+  });
+
+  Customer copyWith({
+    int? id,
+    String? name,
+    String? phone,
+    String? note,
+    int? creditLimit,
+  }) {
+    return Customer(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      phone: phone ?? this.phone,
+      note: note ?? this.note,
+      creditLimit: creditLimit ?? this.creditLimit,
+      createdAt: createdAt,
+    );
+  }
+
+  Map<String, Object?> toMap() => {
+        if (id != null) 'id': id,
+        'name': name,
+        'phone': phone,
+        'note': note,
+        'credit_limit': creditLimit,
+        'created_at': createdAt.millisecondsSinceEpoch,
+      };
+
+  factory Customer.fromMap(Map<String, Object?> m) => Customer(
+        id: m['id'] as int?,
+        name: m['name'] as String,
+        phone: (m['phone'] as String?) ?? '',
+        note: (m['note'] as String?) ?? '',
+        creditLimit: (m['credit_limit'] as int?) ?? 0,
+        createdAt: DateTime.fromMillisecondsSinceEpoch(m['created_at'] as int),
+      );
+}
+
+class Txn {
+  final int? id;
+  final int customerId;
+  final TxnType type;
+  final int amount;
+  final String note;
+  final DateTime date;
+  final DateTime? dueDate;
+
+  const Txn({
+    this.id,
+    required this.customerId,
+    required this.type,
+    required this.amount,
+    this.note = '',
+    required this.date,
+    this.dueDate,
+  });
+
+  Map<String, Object?> toMap() => {
+        if (id != null) 'id': id,
+        'customer_id': customerId,
+        'type': type.name,
+        'amount': amount,
+        'note': note,
+        'date': date.millisecondsSinceEpoch,
+        'due_date': dueDate?.millisecondsSinceEpoch,
+      };
+
+  factory Txn.fromMap(Map<String, Object?> m) => Txn(
+        id: m['id'] as int?,
+        customerId: m['customer_id'] as int,
+        type: TxnType.values.byName(m['type'] as String),
+        amount: m['amount'] as int,
+        note: (m['note'] as String?) ?? '',
+        date: DateTime.fromMillisecondsSinceEpoch(m['date'] as int),
+        dueDate: m['due_date'] == null
+            ? null
+            : DateTime.fromMillisecondsSinceEpoch(m['due_date'] as int),
+      );
+}
+
+/// Sisa utang = total utang dikurangi total pembayaran.
+int computeBalance(List<Txn> txns) => txns.fold<int>(
+      0,
+      (sum, t) => sum + (t.type == TxnType.utang ? t.amount : -t.amount),
+    );
+
+/// Jatuh tempo terdekat dari utang yang belum tertutup.
+/// Pembayaran dialokasikan ke utang paling lama lebih dulu (FIFO).
+DateTime? nextDueDate(List<Txn> txns) {
+  var credit = txns
+      .where((t) => t.type == TxnType.bayar)
+      .fold<int>(0, (sum, t) => sum + t.amount);
+  final debts = txns.where((t) => t.type == TxnType.utang).toList()
+    ..sort((a, b) => a.date.compareTo(b.date));
+
+  DateTime? earliest;
+  for (final d in debts) {
+    if (credit >= d.amount) {
+      credit -= d.amount;
+      continue;
+    }
+    credit = 0;
+    final due = d.dueDate;
+    if (due != null && (earliest == null || due.isBefore(earliest))) {
+      earliest = due;
+    }
+  }
+  return earliest;
+}
+
+class CustomerSummary {
+  final Customer customer;
+  final int balance;
+  final DateTime? nextDue;
+  final DateTime? lastActivity;
+
+  const CustomerSummary({
+    required this.customer,
+    required this.balance,
+    this.nextDue,
+    this.lastActivity,
+  });
+
+  DebtStatus status([DateTime? now]) {
+    if (balance <= 0) return DebtStatus.lunas;
+    final due = nextDue;
+    if (due == null) return DebtStatus.lancar;
+    final today = dateOnly(now ?? DateTime.now());
+    final dueDay = dateOnly(due);
+    if (dueDay.isBefore(today)) return DebtStatus.telat;
+    if (dueDay.difference(today).inDays <= 3) return DebtStatus.mendekati;
+    return DebtStatus.lancar;
+  }
+
+  bool get overLimit =>
+      customer.creditLimit > 0 && balance > customer.creditLimit;
+}
+
+List<CustomerSummary> buildSummaries(
+  List<Customer> customers,
+  List<Txn> txns,
+) {
+  final byCustomer = <int, List<Txn>>{};
+  for (final t in txns) {
+    byCustomer.putIfAbsent(t.customerId, () => <Txn>[]).add(t);
+  }
+  return customers.map((c) {
+    final list = byCustomer[c.id] ?? <Txn>[];
+    return CustomerSummary(
+      customer: c,
+      balance: computeBalance(list),
+      nextDue: nextDueDate(list),
+      lastActivity: list.isEmpty
+          ? null
+          : list.map((t) => t.date).reduce((a, b) => a.isAfter(b) ? a : b),
+    );
+  }).toList();
+}
+
+
+/// Mengurutkan transaksi berdasarkan waktu, lalu ID untuk waktu yang sama.
+List<Txn> _orderedTxns(List<Txn> txns) {
+  return [...txns]..sort((a, b) {
+    final byDate = a.date.compareTo(b.date);
+    return byDate != 0 ? byDate : (a.id ?? 0).compareTo(b.id ?? 0);
+  });
+}
+
+/// Transaksi pada siklus utang yang masih aktif.
+List<Txn> activeDebtCycle(List<Txn> txns) {
+  final cycle = <Txn>[];
+  var balance = 0;
+
+  for (final t in _orderedTxns(txns)) {
+    cycle.add(t);
+    balance += t.type == TxnType.utang ? t.amount : -t.amount;
+
+    if (balance <= 0) {
+      cycle.clear();
+      balance = 0;
+    }
+  }
+
+  return cycle;
+}
+
+/// Transaksi pada siklus terakhir yang sudah lunas.
+List<Txn> latestClosedDebtCycle(List<Txn> txns) {
+  final cycle = <Txn>[];
+  List<Txn> latestClosed = [];
+  var balance = 0;
+
+  for (final t in _orderedTxns(txns)) {
+    cycle.add(t);
+    balance += t.type == TxnType.utang ? t.amount : -t.amount;
+
+    if (balance <= 0) {
+      if (cycle.any((item) => item.type == TxnType.utang)) {
+        latestClosed = List<Txn>.from(cycle);
+      }
+      cycle.clear();
+      balance = 0;
+    }
+  }
+
+  return latestClosed;
+}
+
+===== PUBSPEC =====
+name: buku_utang_warung
+description: Buku utang pelanggan untuk pemilik warung. Offline, cepat, dan bisa tagih lewat WhatsApp.
+publish_to: "none"
+version: 0.1.0+1
+
+environment:
+  sdk: ">=3.3.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  sqflite: ^2.3.3
+  path: ^1.9.0
+  url_launcher: ^6.3.0
+  file_picker: ^12.3.0
+
+  google_sign_in: ^7.2.0
+  googleapis: ^19.0.0
+  extension_google_sign_in_as_googleapis_auth: ^3.0.0
+  cryptography: ^2.7.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+flutter:
+  uses-material-design: true
+
+===== STATUS GIT =====
+ M lib/screens/settings_screen.dart
+?? backup_google_login_20261114_185251/
+?? backup_sebelum_cloud_ui_20261114_225058/
+?? backup_sebelum_cloud_ui_20261114_225846/
+?? backup_sebelum_google_20261114_184301/
+?? backup_sebelum_integrasi_drive_20261114_221515/
+?? backup_sebelum_settings_20261114_164203/
+?? backup_sebelum_test_restore_20261114_230544/
+?? backup_sebelum_update_siklus/
+?? backup_status_google_20261114_192221/
+?? patchv3.py
