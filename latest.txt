@@ -1,246 +1,343 @@
-===== AUDIT RESTORE GOOGLE DRIVE =====
-Sat Nov 14 23:02:43 WIB 2026
+===== PERSIAPAN TEST RESTORE =====
+Sat Nov 14 23:03:51 WIB 2026
 
-===== RESTORE DATABASE =====
-188-          row['note'] is! String ||
-189-          row['date'] is! int ||
-190-          (dueDate != null && dueDate is! int)) {
-191-        throw const FormatException('Data transaksi tidak lengkap atau rusak');
-192-      }
-193-    }
-194-  }
-195-
-196-  // Penggantian seluruh data dilakukan dalam satu transaksi SQLite.
-197-  // Jika satu insert gagal, SQLite membatalkan seluruh proses.
-198:  Future<void> restoreBackup(Map<String, dynamic> data) async {
-199-    validateBackupData(data);
-200-
-201-    final customers = _rows(data['customers'], 'pelanggan');
-202-    final transactions = _rows(data['transactions'], 'transaksi');
-203-    final db = await _database;
-204-
-205-    await db.transaction((txn) async {
-206-      await txn.delete('transactions');
-207-      await txn.delete('customers');
-208-
-209-      for (final row in customers) {
-210-        await txn.insert('customers', row);
-211-      }
-212-
-213-      for (final row in transactions) {
-214-        await txn.insert('transactions', row);
-215-      }
-216-    });
-217-  }
-218-}
+===== DEPENDENSI TEST =====
+17-  google_sign_in: ^7.2.0
+18-  googleapis: ^19.0.0
+19-  extension_google_sign_in_as_googleapis_auth: ^3.0.0
+20-  cryptography: ^2.7.0
+21-
+22:dev_dependencies:
+23-  flutter_test:
+24-    sdk: flutter
+25-
+26-flutter:
+27-  uses-material-design: true
 
-===== VALIDASI BACKUP =====
-134-      return Map<String, Object?>.from(item);
-135-    }).toList();
-136-  }
-137-
-138-  // Validasi lengkap dilakukan sebelum database boleh diubah.
-139:  static void validateBackupData(Map<String, dynamic> data) {
-140-    if (data['format'] != backupFormat) {
-141-      throw const FormatException('Format file bukan backup Buku Utang Warung');
-142-    }
-143-    if (data['version'] != backupVersion) {
-144-      throw const FormatException('Versi backup tidak didukung');
-145-    }
-146-
-147-    final customers = _rows(data['customers'], 'pelanggan');
-148-    final transactions = _rows(data['transactions'], 'transaksi');
-149-
-150-    final customerIds = <int>{};
-151-
-152-    for (final row in customers) {
-153-      final id = row['id'];
-154-      if (id is! int || id <= 0 || !customerIds.add(id)) {
-155-        throw const FormatException('ID pelanggan tidak valid atau duplikat');
-156-      }
-157-      if (row['name'] is! String ||
-158-          row['phone'] is! String ||
-159-          row['note'] is! String ||
-160-          row['credit_limit'] is! int ||
-161-          (row['credit_limit'] as int) < 0 ||
-162-          row['created_at'] is! int) {
-163-        throw const FormatException('Data pelanggan tidak lengkap atau rusak');
-164-      }
-165-    }
-166-
-167-    final txnIds = <int>{};
-168-
-169-    for (final row in transactions) {
-170-      final id = row['id'];
-171-      final customerId = row['customer_id'];
-172-      final type = row['type'];
-173-      final amount = row['amount'];
-174-      final dueDate = row['due_date'];
-175-
-176-      if (id is! int || id <= 0 || !txnIds.add(id)) {
-177-        throw const FormatException('ID transaksi tidak valid atau duplikat');
-178-      }
-179-      if (customerId is! int || !customerIds.contains(customerId)) {
-180-        throw const FormatException(
-181-          'Transaksi mengacu ke pelanggan yang tidak ditemukan',
-182-        );
-183-      }
-184-      if (type != 'utang' && type != 'bayar') {
-185-        throw const FormatException('Jenis transaksi tidak dikenal');
-186-      }
-187-      if (amount is! int || amount <= 0 ||
-188-          row['note'] is! String ||
-189-          row['date'] is! int ||
-190-          (dueDate != null && dueDate is! int)) {
-191-        throw const FormatException('Data transaksi tidak lengkap atau rusak');
-192-      }
-193-    }
-194-  }
-195-
-196-  // Penggantian seluruh data dilakukan dalam satu transaksi SQLite.
-197-  // Jika satu insert gagal, SQLite membatalkan seluruh proses.
-198-  Future<void> restoreBackup(Map<String, dynamic> data) async {
-199:    validateBackupData(data);
-200-
-201-    final customers = _rows(data['customers'], 'pelanggan');
-202-    final transactions = _rows(data['transactions'], 'transaksi');
-203-    final db = await _database;
-204-
-205-    await db.transaction((txn) async {
-206-      await txn.delete('transactions');
-207-      await txn.delete('customers');
-208-
-209-      for (final row in customers) {
-210-        await txn.insert('customers', row);
-211-      }
-212-
-213-      for (final row in transactions) {
-214-        await txn.insert('transactions', row);
-215-      }
-216-    });
-217-  }
-218-}
+===== DATABASE: IMPORT DAN KONSTRUKTOR =====
+import 'package:path/path.dart' as p;
+import 'package:sqflite/sqflite.dart';
 
-===== CLOUD RESTORE UI =====
-  Future<void> _cloudRestore() async {
-    if (_busy || _googleEmail == null) return;
+import 'models.dart';
 
-    setState(() => _busy = true);
+class AppDb {
+  AppDb._();
+  static final AppDb instance = AppDb._();
 
-    try {
-      final files =
-          await GoogleDriveService.instance.listEncryptedBackups();
+  static const backupFormat = 'buku_utang_warung_backup';
+  static const backupVersion = 1;
 
-      if (!mounted) return;
+  Database? _db;
 
-      if (files.isEmpty) {
-        _message('Belum ada backup Buku Utang Warung di Google Drive.');
-        return;
-      }
+  Future<Database> get _database async => _db ??= await _open();
 
-      final selectedIndex = await showDialog<int>(
-        context: context,
-        builder: (dialogContext) => AlertDialog(
-          title: const Text('Pilih backup cloud'),
-          content: SizedBox(
-            width: double.maxFinite,
-            child: ListView(
-              shrinkWrap: true,
-              children: [
-                for (var i = 0; i < files.length; i++)
-                  ListTile(
-                    leading: const Icon(Icons.cloud_download_outlined),
-                    title: Text(files[i].name ?? 'Backup tanpa nama'),
-                    subtitle: Text(
-                      files[i].createdTime?.toLocal().toString() ??
-                          'Waktu tidak tersedia',
-                    ),
-                    onTap: () => Navigator.pop(dialogContext, i),
-                  ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('Batal'),
-            ),
-          ],
-        ),
-      );
-
-      if (selectedIndex == null || !mounted) return;
-
-      final selectedFile = files[selectedIndex];
-      final fileId = selectedFile.id;
-      if (fileId == null || fileId.isEmpty) {
-        throw StateError('ID backup Google Drive tidak tersedia.');
-      }
-
-      final password = await _askCloudPassword(confirm: false);
-      if (password == null || !mounted) return;
-
-      final encrypted =
-          await GoogleDriveService.instance.downloadEncryptedBackup(fileId);
-
-      final decoded =
-          await BackupCryptoService.instance.decryptBackup(
-        encrypted,
-        password,
-      );
-
-      AppDb.validateBackupData(decoded);
-
-      final customerCount = (decoded['customers'] as List).length;
-      final transactionCount = (decoded['transactions'] as List).length;
-
-      if (!mounted) return;
-
-      final confirmed = await showDialog<bool>(
-        context: context,
-        builder: (dialogContext) => AlertDialog(
-          title: const Text('Pulihkan backup cloud?'),
-          content: Text(
-            'Data lokal saat ini akan DIGANTI dengan isi backup cloud.\n\n'
-            'Pelanggan: $customerCount\n'
-            'Transaksi: $transactionCount\n\n'
-            'Pastikan Anda sudah memiliki salinan data saat ini.',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext, false),
-              child: const Text('Batal'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(dialogContext, true),
-              child: const Text('Ganti dan pulihkan'),
-            ),
-          ],
-        ),
-      );
-
-      if (confirmed != true || !mounted) return;
-
-      await AppDb.instance.restoreBackup(decoded);
-      _message('Restore dari Google Drive berhasil.');
-    } catch (e) {
-      _message('Restore Google Drive gagal. Data lokal tidak diganti: $e');
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
+  Future<Database> _open() async {
+    final path = p.join(await getDatabasesPath(), 'buku_utang.db');
+    return openDatabase(
+      path,
+      version: 1,
+      onConfigure: (db) async {
+        await db.execute('PRAGMA foreign_keys = ON');
+      },
+      onCreate: (db, version) async {
+        await db.execute('''
+          CREATE TABLE customers(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            phone TEXT NOT NULL DEFAULT '',
+            note TEXT NOT NULL DEFAULT '',
+            credit_limit INTEGER NOT NULL DEFAULT 0,
+            created_at INTEGER NOT NULL
+          )
+        ''');
+        await db.execute('''
+          CREATE TABLE transactions(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            customer_id INTEGER NOT NULL,
+            type TEXT NOT NULL,
+            amount INTEGER NOT NULL,
+            note TEXT NOT NULL DEFAULT '',
+            date INTEGER NOT NULL,
+            due_date INTEGER,
+            FOREIGN KEY(customer_id) REFERENCES customers(id) ON DELETE CASCADE
+          )
+        ''');
+        await db.execute(
+          'CREATE INDEX idx_txn_customer ON transactions(customer_id)',
+        );
+      },
+    );
   }
 
-  @override
-  Widget build(BuildContext context) {
+  Future<List<Customer>> customers() async {
+    final db = await _database;
+    final rows = await db.query('customers', orderBy: 'name COLLATE NOCASE');
+    return rows.map(Customer.fromMap).toList();
+  }
 
-===== TEST DATABASE DAN BACKUP =====
-test/utils_test.dart
-test/backup_crypto_test.dart
+  Future<Customer?> customer(int id) async {
+    final db = await _database;
+    final rows = await db.query('customers', where: 'id = ?', whereArgs: [id]);
+    return rows.isEmpty ? null : Customer.fromMap(rows.first);
+  }
 
-===== TEST RESTORE =====
-test/backup_crypto_test.dart:32:    final restored = await crypto.decryptBackup(
-test/backup_crypto_test.dart:55:      () => crypto.decryptBackup(encrypted, 'PasswordSalah2026'),
-test/backup_crypto_test.dart:76:      () => crypto.decryptBackup(tampered, 'PasswordBenar2026'),
+  Future<int> insertCustomer(Customer c) async {
+    final db = await _database;
+    return db.insert('customers', c.toMap());
+  }
+
+  Future<void> updateCustomer(Customer c) async {
+    final db = await _database;
+    await db.update('customers', c.toMap(), where: 'id = ?', whereArgs: [c.id]);
+  }
+
+  Future<void> deleteCustomer(int id) async {
+    final db = await _database;
+    await db.delete('transactions', where: 'customer_id = ?', whereArgs: [id]);
+    await db.delete('customers', where: 'id = ?', whereArgs: [id]);
+  }
+
+  Future<List<Txn>> allTxns() async {
+    final db = await _database;
+    final rows = await db.query('transactions');
+    return rows.map(Txn.fromMap).toList();
+  }
+
+  Future<List<Txn>> txnsFor(int customerId) async {
+    final db = await _database;
+    final rows = await db.query(
+      'transactions',
+      where: 'customer_id = ?',
+      whereArgs: [customerId],
+      orderBy: 'date ASC, id ASC',
+    );
+    return rows.map(Txn.fromMap).toList();
+  }
+
+  Future<int> insertTxn(Txn t) async {
+    final db = await _database;
+    return db.insert('transactions', t.toMap());
+  }
+
+  Future<void> deleteTxn(int id) async {
+    final db = await _database;
+    await db.delete('transactions', where: 'id = ?', whereArgs: [id]);
+  }
+
+  // Membuat snapshot JSON tanpa mengubah database aktif.
+  Future<Map<String, Object?>> exportBackup() async {
+    final db = await _database;
+    return {
+      'format': backupFormat,
+      'version': backupVersion,
+      'exported_at': DateTime.now().toUtc().toIso8601String(),
+      'customers': await db.query('customers', orderBy: 'id ASC'),
+      'transactions': await db.query('transactions', orderBy: 'id ASC'),
+    };
+  }
+
+  static List<Map<String, Object?>> _rows(
+    Object? value,
+    String label,
+  ) {
+    if (value is! List) {
+      throw FormatException('Bagian $label bukan daftar yang valid');
+    }
+
+    return value.map((item) {
+      if (item is! Map) {
+        throw FormatException('Ada data $label yang tidak valid');
+      }
+      return Map<String, Object?>.from(item);
+    }).toList();
+
+===== TEST YANG SUDAH ADA =====
+
+----- test/backup_crypto_test.dart -----
+import 'dart:convert';
+
+import 'package:flutter_test/flutter_test.dart';
+import 'package:buku_utang_warung/services/backup_crypto_service.dart';
+
+void main() {
+  final crypto = BackupCryptoService.instance;
+
+  final sampleBackup = <String, Object?>{
+    'format': 'buku_utang_warung_backup',
+    'version': 1,
+    'exported_at': '2026-11-14T00:00:00.000Z',
+    'customers': [
+      {'id': 1, 'name': 'Pelanggan Uji'},
+    ],
+    'transactions': [
+      {'id': 1, 'customer_id': 1, 'amount': 25000},
+    ],
+  };
+
+  test('Backup dapat dienkripsi dan dibuka kembali', () async {
+    const password = 'WarungAman2026';
+
+    final encrypted = await crypto.encryptBackup(
+      sampleBackup,
+      password,
+    );
+
+    expect(encrypted, isNotEmpty);
+    expect(utf8.decode(encrypted), isNot(contains('Pelanggan Uji')));
+
+    final restored = await crypto.decryptBackup(
+      encrypted,
+      password,
+    );
+
+    expect(restored['customers'], sampleBackup['customers']);
+    expect(restored['transactions'], sampleBackup['transactions']);
+  });
+
+  test('Password kurang dari 8 karakter ditolak', () async {
+    expect(
+      () => crypto.encryptBackup(sampleBackup, '1234567'),
+      throwsArgumentError,
+    );
+  });
+
+  test('Password salah tidak dapat membuka backup', () async {
+    final encrypted = await crypto.encryptBackup(
+      sampleBackup,
+      'PasswordBenar2026',
+    );
+
+    expect(
+      () => crypto.decryptBackup(encrypted, 'PasswordSalah2026'),
+      throwsFormatException,
+    );
+  });
+
+  test('Isi ciphertext yang diubah akan ditolak', () async {
+    final encrypted = await crypto.encryptBackup(
+      sampleBackup,
+      'PasswordBenar2026',
+    );
+
+    final envelope =
+        jsonDecode(utf8.decode(encrypted)) as Map<String, dynamic>;
+
+    final ciphertext = base64Decode(envelope['ciphertext'] as String);
+    ciphertext[0] ^= 1;
+    envelope['ciphertext'] = base64Encode(ciphertext);
+
+    final tampered = utf8.encode(jsonEncode(envelope));
+
+    expect(
+      () => crypto.decryptBackup(tampered, 'PasswordBenar2026'),
+      throwsFormatException,
+    );
+  });
+}
+
+----- test/utils_test.dart -----
+import 'package:flutter_test/flutter_test.dart';
+
+import 'package:buku_utang_warung/models.dart';
+import 'package:buku_utang_warung/utils.dart';
+
+Txn utang(int amount, DateTime date, {DateTime? due}) => Txn(
+      customerId: 1,
+      type: TxnType.utang,
+      amount: amount,
+      date: date,
+      dueDate: due,
+    );
+
+Txn bayar(int amount, DateTime date) =>
+    Txn(customerId: 1, type: TxnType.bayar, amount: amount, date: date);
+
+void main() {
+  test('rupiah memakai pemisah titik', () {
+    expect(rupiah(0), 'Rp 0');
+    expect(rupiah(500), 'Rp 500');
+    expect(rupiah(15000), 'Rp 15.000');
+    expect(rupiah(1250000), 'Rp 1.250.000');
+    expect(rupiah(-2000), '-Rp 2.000');
+  });
+
+  test('tgl memakai nama bulan Indonesia', () {
+    expect(tgl(DateTime(2026, 11, 5)), '5 Nov 2026');
+    expect(tgl(DateTime(2026, 8, 17)), '17 Agu 2026');
+  });
+
+  test('normalizePhone ke format internasional', () {
+    expect(normalizePhone('0812-3456-789'), '628123456789');
+    expect(normalizePhone('+62 812 3456 789'), '628123456789');
+    expect(normalizePhone('8123456789'), '628123456789');
+    expect(normalizePhone(''), isNull);
+  });
+
+  test('saldo = utang dikurangi bayar', () {
+    final txns = [
+      utang(10000, DateTime(2026, 1, 1)),
+      utang(20000, DateTime(2026, 1, 5)),
+      bayar(5000, DateTime(2026, 1, 6)),
+    ];
+    expect(computeBalance(txns), 25000);
+  });
+
+  test('jatuh tempo dihitung dengan alokasi bayar ke utang terlama', () {
+    final txns = [
+      utang(10000, DateTime(2026, 1, 1), due: DateTime(2026, 1, 10)),
+      utang(20000, DateTime(2026, 1, 5), due: DateTime(2026, 1, 20)),
+      bayar(10000, DateTime(2026, 1, 6)),
+    ];
+    // Utang pertama sudah lunas, tinggal yang tempo 20 Jan.
+    expect(nextDueDate(txns), DateTime(2026, 1, 20));
+  });
+
+  test('tanpa tempo atau sudah lunas -> tidak ada jatuh tempo', () {
+    expect(nextDueDate([utang(1000, DateTime(2026, 1, 1))]), isNull);
+    expect(
+      nextDueDate([
+        utang(1000, DateTime(2026, 1, 1), due: DateTime(2026, 1, 10)),
+        bayar(1000, DateTime(2026, 1, 2)),
+      ]),
+      isNull,
+    );
+  });
+
+  test('status pelanggan', () {
+    final c = Customer(id: 1, name: 'Bu Ani', createdAt: DateTime(2026, 1, 1));
+    final now = DateTime(2026, 11, 13, 9);
+
+    CustomerSummary s(int balance, DateTime? due) =>
+        CustomerSummary(customer: c, balance: balance, nextDue: due);
+
+    expect(s(0, null).status(now), DebtStatus.lunas);
+    expect(s(5000, null).status(now), DebtStatus.lancar);
+    expect(s(5000, DateTime(2026, 11, 12)).status(now), DebtStatus.telat);
+    expect(s(5000, DateTime(2026, 11, 13)).status(now), DebtStatus.mendekati);
+    expect(s(5000, DateTime(2026, 11, 16)).status(now), DebtStatus.mendekati);
+    expect(s(5000, DateTime(2026, 11, 20)).status(now), DebtStatus.lancar);
+    expect(statusText(s(5000, DateTime(2026, 11, 10)), now), 'Telat 3 hari');
+  });
+
+  test('pesan tagih memuat nama dan nominal', () {
+    final msg = buildReminder(
+      name: 'Pak Budi',
+      balance: 45000,
+      due: DateTime(2026, 11, 20),
+      txns: [utang(45000, DateTime(2026, 11, 1))],
+    );
+    expect(msg, contains('Pak Budi'));
+    expect(msg, contains('Rp 45.000'));
+    expect(msg, contains('20 Nov 2026'));
+  });
+
+  test('waUri menyandikan teks', () {
+    final uri = waUri('08123456789', 'Halo dunia');
+    expect(uri.host, 'wa.me');
+    expect(uri.path, '/628123456789');
+    expect(uri.queryParameters['text'], 'Halo dunia');
+  });
+}
 
 ===== STATUS GIT =====
  M lib/screens/settings_screen.dart
@@ -253,5 +350,3 @@ test/backup_crypto_test.dart:76:      () => crypto.decryptBackup(tampered, 'Pass
 ?? backup_sebelum_update_siklus/
 ?? backup_status_google_20261114_192221/
 ?? patchv3.py
-
-===== DIFF CHECK =====
