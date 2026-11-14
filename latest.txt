@@ -1,10 +1,210 @@
-84-          decoded['version'] != _backupVersion ||
-85-          decoded['cipher'] != 'AES-256-GCM' ||
-86-          decoded['kdf'] != 'PBKDF2-HMAC-SHA256' ||
-87:          decoded['iterations'] != 310000 ||
-88-          decoded['salt'] is! String ||
-89-          decoded['nonce'] is! String ||
-90-          decoded['ciphertext'] is! String ||
+===== DIFF GOOGLE DRIVE SERVICE =====
+diff --git a/lib/services/google_drive_service.dart b/lib/services/google_drive_service.dart
+index bed5461..421a11a 100644
+--- a/lib/services/google_drive_service.dart
++++ b/lib/services/google_drive_service.dart
+@@ -1,3 +1,7 @@
++import 'dart:async';
++import 'dart:convert';
++import 'dart:typed_data';
++
+ import 'package:extension_google_sign_in_as_googleapis_auth/extension_google_sign_in_as_googleapis_auth.dart';
+ import 'package:google_sign_in/google_sign_in.dart';
+ import 'package:googleapis/drive/v3.dart' as drive;
+@@ -14,6 +18,12 @@ class GoogleDriveService {
+     'https://www.googleapis.com/auth/drive.file',
+   ];
+ 
++  static const String _backupFormat =
++      'buku_utang_warung_encrypted_backup';
++
++  static const int _backupVersion = 1;
++  static const int _maximumBackupBytes = 100 * 1024 * 1024;
++
+   final GoogleSignIn _google = GoogleSignIn.instance;
+   Future<void>? _initialization;
+   GoogleSignInAccount? _account;
+@@ -29,10 +39,8 @@ class GoogleDriveService {
+   Future<GoogleSignInAccount?> restoreAccount() async {
+     await initialize();
+ 
+-    // Jika layanan masih hidup, gunakan akun yang sudah terautentikasi.
+     if (_account != null) return _account;
+ 
+-    // Setelah aplikasi dimulai ulang, coba pulihkan sesi sebelumnya.
+     final attempt = _google.attemptLightweightAuthentication();
+ 
+     if (attempt == null) return null;
+@@ -41,6 +49,152 @@ class GoogleDriveService {
+     return _account;
+   }
+ 
++  Future<T> _withDriveApi<T>(
++    Future<T> Function(drive.DriveApi api) action,
++  ) async {
++    final currentAccount = await restoreAccount();
++
++    if (currentAccount == null) {
++      throw StateError('Hubungkan akun Google Drive terlebih dahulu.');
++    }
++
++    final authorization = await currentAccount.authorizationClient
++        .authorizeScopes(_scopes);
++
++    final client = authorization.authClient(scopes: _scopes);
++
++    try {
++      final api = drive.DriveApi(client);
++      return await action(api);
++    } finally {
++      client.close();
++    }
++  }
++
++  void _validateEncryptedFile(List<int> bytes) {
++    if (bytes.isEmpty || bytes.length > _maximumBackupBytes) {
++      throw const FormatException('Ukuran backup tidak valid.');
++    }
++
++    try {
++      final decoded = jsonDecode(utf8.decode(bytes));
++
++      if (decoded is! Map<String, dynamic> ||
++          decoded['format'] != _backupFormat ||
++          decoded['version'] != _backupVersion ||
++          decoded['cipher'] != 'AES-256-GCM' ||
++          decoded['kdf'] != 'PBKDF2-HMAC-SHA256' ||
++          decoded['iterations'] != 310000 ||
++          decoded['salt'] is! String ||
++          decoded['nonce'] is! String ||
++          decoded['ciphertext'] is! String ||
++          decoded['mac'] is! String) {
++        throw const FormatException(
++          'File bukan backup terenkripsi Buku Utang Warung.',
++        );
++      }
++    } on FormatException {
++      rethrow;
++    } catch (_) {
++      throw const FormatException('Isi file backup tidak valid.');
++    }
++  }
++
++  Future<drive.File> uploadEncryptedBackup(
++    List<int> encryptedBytes,
++  ) async {
++    _validateEncryptedFile(encryptedBytes);
++
++    final timestamp = DateTime.now().toUtc().millisecondsSinceEpoch;
++
++    return _withDriveApi((api) async {
++      final metadata = drive.File()
++        ..name = 'backup_buku_utang_$timestamp.buwbackup'
++        ..mimeType = 'application/octet-stream'
++        ..appProperties = {
++          'app': 'buku_utang_warung',
++          'format': 'encrypted_backup',
++          'version': '1',
++        };
++
++      final media = drive.Media(
++        Stream<List<int>>.value(encryptedBytes),
++        encryptedBytes.length,
++      );
++
++      final uploaded = await api.files.create(
++        metadata,
++        uploadMedia: media,
++        $fields: 'id,name,mimeType,size,createdTime',
++      );
++
++      if (uploaded.id == null) {
++        throw StateError('Upload selesai tetapi ID file tidak ditemukan.');
++      }
++
++      return uploaded;
++    });
++  }
++
++  Future<List<drive.File>> listEncryptedBackups() async {
++    return _withDriveApi((api) async {
++      final results = <drive.File>[];
++      String? pageToken;
++
++      do {
++        final response = await api.files.list(
++          q: "trashed = false and "
++              "appProperties has { key='app' and "
++              "value='buku_utang_warung' }",
++          spaces: 'drive',
++          pageSize: 100,
++          pageToken: pageToken,
++          orderBy: 'createdTime desc',
++          $fields: 'nextPageToken,files(id,name,mimeType,size,createdTime)',
++        );
++
++        results.addAll(response.files ?? <drive.File>[]);
++        pageToken = response.nextPageToken;
++      } while (pageToken != null);
++
++      return results;
++    });
++  }
++
++  Future<Uint8List> downloadEncryptedBackup(String fileId) async {
++    if (fileId.trim().isEmpty) {
++      throw ArgumentError('ID file backup kosong.');
++    }
++
++    return _withDriveApi((api) async {
++      final response = await api.files.get(
++        fileId,
++        downloadOptions: drive.DownloadOptions.fullMedia,
++      );
++
++      if (response is! drive.Media) {
++        throw StateError('Google Drive tidak mengembalikan isi file.');
++      }
++
++      final builder = BytesBuilder(copy: false);
++
++      await for (final chunk in response.stream) {
++        builder.add(chunk);
++
++        if (builder.length > _maximumBackupBytes) {
++          throw const FormatException(
++            'File backup melebihi batas ukuran 100 MB.',
++          );
++        }
++      }
++
++      final bytes = builder.takeBytes();
++      _validateEncryptedFile(bytes);
++
++      return bytes;
++    });
++  }
++
+   Future<String> connectAndTest() async {
+     await initialize();
+ 
+@@ -59,7 +213,6 @@ class GoogleDriveService {
+     try {
+       final api = drive.DriveApi(client);
+ 
+-      // Tes akses baca. Tidak mengubah atau menghapus file Drive.
+       await api.files.list(
+         pageSize: 1,
+         $fields: 'files(id,name)',
 
- lib/services/google_drive_service.dart | 159 ++++++++++++++++++++++++++++++++-
- 1 file changed, 156 insertions(+), 3 deletions(-)
+===== DIFF CHECK =====
+
+===== STATUS GIT =====
+ M lib/services/google_drive_service.dart
+?? backup_google_login_20261114_185251/
+?? backup_sebelum_google_20261114_184301/
+?? backup_sebelum_integrasi_drive_20261114_221515/
+?? backup_sebelum_settings_20261114_164203/
+?? backup_sebelum_update_siklus/
+?? backup_status_google_20261114_192221/
+?? patchv3.py
