@@ -1,0 +1,43 @@
+===== FIX SQLITE FFI =====
+Sat Nov 14 23:19:57 WIB 2026
+Backup: backup_sebelum_fix_sqlite_20261114_231957/pubspec.yaml
+
+===== DEPENDENSI =====
+22:dev_dependencies:
+23-  flutter_test:
+24-    sdk: flutter
+25-  sqflite_common_ffi: 2.3.3
+26-  sqlite3: 2.4.0
+27-
+
+===== DIFF CHECK =====
+
+===== DIFF PUBSPEC =====
+diff --git a/pubspec.yaml b/pubspec.yaml
+index b66cbca..e19d069 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -23,6 +23,7 @@ dev_dependencies:
+   flutter_test:
+     sdk: flutter
+   sqflite_common_ffi: 2.3.3
++  sqlite3: 2.4.0
+ 
+ flutter:
+   uses-material-design: true
+
+===== STATUS GIT =====
+ M lib/screens/settings_screen.dart
+ M pubspec.yaml
+?? backup_google_login_20261114_185251/
+?? backup_sebelum_cloud_ui_20261114_225058/
+?? backup_sebelum_cloud_ui_20261114_225846/
+?? backup_sebelum_fix_sqlite_20261114_231957/
+?? backup_sebelum_google_20261114_184301/
+?? backup_sebelum_integrasi_drive_20261114_221515/
+?? backup_sebelum_pin_ffi_20261114_230953/
+?? backup_sebelum_settings_20261114_164203/
+?? backup_sebelum_test_restore_20261114_230544/
+?? backup_sebelum_update_siklus/
+?? backup_status_google_20261114_192221/
+?? patchv3.py
