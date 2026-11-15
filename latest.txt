@@ -1,28 +1,207 @@
-===== GOOGLE SESSION PATCH =====
-Sun Nov 15 12:46:54 WIB 2026
-BACKUP VERIFIED: /data/data/com.termux/files/home/buku/backup_google_session_fix_20261115_124655
-PATCH BERHASIL
-- Dependency shared_preferences
-- Import shared_preferences
-- Penyimpanan email
-- Getter email tersimpan
-- Restore tanpa picker otomatis
-- Pemeriksaan sesi Drive
-- Set account setelah tes Drive
-- Simpan email dan bersihkan saat logout
-- Restore email di Settings
-- Label email
-- Tombol reconnect
-- Nonaktifkan backup saat sesi mati
-- Nonaktifkan restore saat sesi mati
+===== PIN SHARED PREFERENCES =====
+Sun Nov 15 12:49:30 WIB 2026
+
+===== BACKUP =====
+backup_sebelum_pin_shared_preferences_20261115_124930
 
 ===== DIFF CHECK =====
 
-===== DIFF STAT =====
- lib/screens/settings_screen.dart       | 35 ++++++++++++++++++------
- lib/services/google_drive_service.dart | 49 +++++++++++++---------------------
- pubspec.yaml                           |  1 +
- 3 files changed, 47 insertions(+), 38 deletions(-)
+===== DIFF LENGKAP =====
+diff --git a/lib/screens/settings_screen.dart b/lib/screens/settings_screen.dart
+index ad3424a..3fec698 100644
+--- a/lib/screens/settings_screen.dart
++++ b/lib/screens/settings_screen.dart
+@@ -55,15 +55,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
+ 
+   Future<void> _restoreGoogleStatus() async {
+     try {
+-      final account =
+-          await GoogleDriveService.instance.restoreAccount();
++      final google = GoogleDriveService.instance;
++      final account = await google.restoreAccount();
++      final savedEmail = await google.loadSavedAccountEmail();
+ 
+       if (!mounted) return;
+ 
+       setState(() {
+-        _googleEmail = account?.email;
+-        _googleRestoreStatus =
+-            GoogleDriveService.instance.restoreDiagnostic;
++        _googleEmail = account?.email ?? savedEmail;
++        _googleRestoreStatus = account != null
++            ? 'SESI_AKTIF'
++            : savedEmail != null
++                ? 'IDENTITAS_TERSIMPAN_SESI_BELUM_AKTIF'
++                : 'BELUM_TERHUBUNG';
+       });
+     } catch (e) {
+       if (!mounted) return;
+@@ -546,9 +550,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
+                     ListTile(
+                       contentPadding: EdgeInsets.zero,
+                       leading: const Icon(Icons.account_circle_outlined),
+-                      title: const Text('Akun terhubung'),
++                      title: const Text('Akun Google terakhir digunakan'),
+                       subtitle: Text(_googleEmail!),
+                     ),
++                    if (GoogleDriveService.instance.account == null) ...[
++                      const SizedBox(height: 8),
++                      SizedBox(
++                        width: double.infinity,
++                        child: FilledButton.icon(
++                          onPressed: _busy ? null : _connectGoogle,
++                          icon: const Icon(Icons.login),
++                          label: const Text('Hubungkan ulang sesi Google'),
++                        ),
++                      ),
++                    ],
+                     SizedBox(
+                       width: double.infinity,
+                       child: OutlinedButton.icon(
+@@ -579,7 +594,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
+                     SizedBox(
+                       width: double.infinity,
+                       child: FilledButton.icon(
+-                        onPressed: _busy ? null : _cloudBackup,
++                        onPressed: _busy || GoogleDriveService.instance.account == null
++                            ? null
++                            : _cloudBackup,
+                         icon: const Icon(Icons.cloud_upload_outlined),
+                         label: const Text('Backup ke Google Drive'),
+                       ),
+@@ -588,7 +605,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
+                     SizedBox(
+                       width: double.infinity,
+                       child: OutlinedButton.icon(
+-                        onPressed: _busy ? null : _cloudRestore,
++                        onPressed: _busy || GoogleDriveService.instance.account == null
++                            ? null
++                            : _cloudRestore,
+                         icon: const Icon(Icons.cloud_download_outlined),
+                         label: const Text('Pulihkan dari Google Drive'),
+                       ),
+diff --git a/lib/services/google_drive_service.dart b/lib/services/google_drive_service.dart
+index a9253f2..d0669fe 100644
+--- a/lib/services/google_drive_service.dart
++++ b/lib/services/google_drive_service.dart
+@@ -5,6 +5,7 @@ import 'dart:typed_data';
+ import 'package:extension_google_sign_in_as_googleapis_auth/extension_google_sign_in_as_googleapis_auth.dart';
+ import 'package:google_sign_in/google_sign_in.dart';
+ import 'package:googleapis/drive/v3.dart' as drive;
++import 'package:shared_preferences/shared_preferences.dart';
+ 
+ class GoogleDriveService {
+   GoogleDriveService._();
+@@ -25,6 +26,8 @@ class GoogleDriveService {
+   static const int _maximumBackupBytes = 100 * 1024 * 1024;
+ 
+   final GoogleSignIn _google = GoogleSignIn.instance;
++  final SharedPreferencesAsync _preferences = SharedPreferencesAsync();
++  static const String _savedAccountEmailKey = 'google_drive_saved_email';
+   Future<void>? _initialization;
+   GoogleSignInAccount? _account;
+   StreamSubscription<GoogleSignInAuthenticationEvent>? _authSubscription;
+@@ -68,50 +71,31 @@ class GoogleDriveService {
+ 
+   String get restoreDiagnostic => _restoreDiagnostic;
+ 
++  Future<String?> loadSavedAccountEmail() =>
++      _preferences.getString(_savedAccountEmailKey);
++
+   Future<GoogleSignInAccount?> restoreAccount() async {
+     _restoreDiagnostic = 'INITIALIZING';
+     await initialize();
+ 
+     if (_account != null) {
+-      _restoreDiagnostic = 'ACCOUNT_ALREADY_AVAILABLE';
++      _restoreDiagnostic = 'SESSION_ACTIVE';
+       return _account;
+     }
+ 
+-    _restoreDiagnostic = 'ATTEMPTING_LIGHTWEIGHT_AUTH';
+-
+-    try {
+-      final attempt = _google.attemptLightweightAuthentication(
+-        reportAllExceptions: true,
+-      );
+-
+-      if (attempt == null) {
+-        _restoreDiagnostic = 'NO_FUTURE_RETURNED';
+-        return null;
+-      }
+-
+-      final restored = await attempt;
+-
+-      if (restored == null) {
+-        _restoreDiagnostic = 'FUTURE_RETURNED_NULL';
+-        return _account;
+-      }
+-
+-      _setAccount(restored);
+-      _restoreDiagnostic = 'LIGHTWEIGHT_RESTORED';
+-      return _account;
+-    } catch (e) {
+-      _restoreDiagnostic = 'ERROR ${e.runtimeType}: $e';
+-      rethrow;
+-    }
++    _restoreDiagnostic = 'NO_ACTIVE_SESSION';
++    return null;
+   }
+ 
+   Future<T> _withDriveApi<T>(
+     Future<T> Function(drive.DriveApi api) action,
+   ) async {
+-    final currentAccount = await restoreAccount();
++    final currentAccount = _account;
+ 
+     if (currentAccount == null) {
+-      throw StateError('Hubungkan akun Google Drive terlebih dahulu.');
++      throw StateError(
++        'Sesi Google belum aktif. Hubungkan ulang Google Drive terlebih dahulu.',
++      );
+     }
+ 
+     final authorizationClient = currentAccount.authorizationClient;
+@@ -261,7 +245,6 @@ class GoogleDriveService {
+     }
+ 
+     final account = await _google.authenticate();
+-    _setAccount(account);
+ 
+     final authorizationClient = account.authorizationClient;
+     final authorization =
+@@ -281,13 +264,19 @@ class GoogleDriveService {
+       client.close();
+     }
+ 
++    _setAccount(account);
++    await _preferences.setString(_savedAccountEmailKey, account.email);
++    _restoreDiagnostic = 'SESSION_ACTIVE';
++
+     return account.email;
+   }
+ 
+   Future<void> signOut() async {
+     await initialize();
+     await _google.signOut();
++    await _preferences.remove(_savedAccountEmailKey);
+     _setAccount(null);
++    _restoreDiagnostic = 'SIGNED_OUT';
+   }
+ 
+   Future<String> switchAccount() async {
+diff --git a/pubspec.yaml b/pubspec.yaml
+index e19d069..90d41c3 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -18,6 +18,7 @@ dependencies:
+   googleapis: ^19.0.0
+   extension_google_sign_in_as_googleapis_auth: ^3.0.0
+   cryptography: ^2.7.0
++  shared_preferences: 2.3.1
+ 
+ dev_dependencies:
+   flutter_test:
 
 ===== GIT STATUS =====
  M lib/screens/settings_screen.dart
@@ -40,6 +219,7 @@ PATCH BERHASIL
 ?? backup_sebelum_google_20261114_184301/
 ?? backup_sebelum_integrasi_drive_20261114_221515/
 ?? backup_sebelum_pin_ffi_20261114_230953/
+?? backup_sebelum_pin_shared_preferences_20261115_124930/
 ?? backup_sebelum_settings_20261114_164203/
 ?? backup_sebelum_test_restore_20261114_230544/
 ?? backup_sebelum_update_siklus/
