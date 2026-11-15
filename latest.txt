@@ -1,6 +1,6 @@
 ===== STATUS GIT =====
- M lib/screens/settings_screen.dart
- M lib/services/google_drive_service.dart
+M  lib/screens/settings_screen.dart
+M  lib/services/google_drive_service.dart
 ?? backup_google_login_20261114_185251/
 ?? backup_google_session_20261115_102650/
 ?? backup_sebelum_cloud_ui_20261114_225058/
@@ -15,6 +15,10 @@
 ?? backup_status_google_20261114_192221/
 ?? patchv3.py
 
+===== FILE STAGED =====
+lib/screens/settings_screen.dart
+lib/services/google_drive_service.dart
+
 ===== DIFF CHECK =====
 
 ===== DIFF STAT =====
@@ -22,7 +26,7 @@
  lib/services/google_drive_service.dart | 49 ++++++++++++++++++++++++++++------
  2 files changed, 62 insertions(+), 10 deletions(-)
 
-===== DIFF SERVICE =====
+===== DIFF GOOGLE SERVICE =====
 diff --git a/lib/services/google_drive_service.dart b/lib/services/google_drive_service.dart
 index 421a11a..4ed5db4 100644
 --- a/lib/services/google_drive_service.dart
