@@ -1,0 +1,8 @@
+===== GOOGLE SIGN IN API =====
+grep: /data/data/com.termux/files/home/.pub-cache/hosted/pub.dev/google_sign_in-*/lib/google_sign_in.dart: No such file or directory
+
+===== VERSI PACKAGE =====
+17:  google_sign_in: ^7.2.0
+18-  googleapis: ^19.0.0
+19-  extension_google_sign_in_as_googleapis_auth: ^3.0.0
+20-  cryptography: ^2.7.0
