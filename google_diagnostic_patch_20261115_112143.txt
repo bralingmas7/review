@@ -1,0 +1,310 @@
+===== WAKTU =====
+Sun Nov 15 11:21:43 WIB 2026
+
+===== STATUS GIT =====
+ M lib/screens/settings_screen.dart
+ M lib/services/google_drive_service.dart
+?? backup_diagnostik_google_20261115_111942/
+?? backup_fix_google_import_20261115_104148/
+?? backup_google_login_20261114_185251/
+?? backup_google_session_20261115_102650/
+?? backup_sebelum_cloud_ui_20261114_225058/
+?? backup_sebelum_cloud_ui_20261114_225846/
+?? backup_sebelum_fix_sqlite_20261114_231957/
+?? backup_sebelum_google_20261114_184301/
+?? backup_sebelum_integrasi_drive_20261114_221515/
+?? backup_sebelum_pin_ffi_20261114_230953/
+?? backup_sebelum_settings_20261114_164203/
+?? backup_sebelum_test_restore_20261114_230544/
+?? backup_sebelum_update_siklus/
+?? backup_status_google_20261114_192221/
+?? patchv3.py
+
+===== DIAGNOSTIK SERVICE =====
+54:          _restoreDiagnostic = 'AUTH_EVENT_SIGN_IN';
+55-          _setAccount(event.user);
+56-        } else if (event is GoogleSignInAuthenticationEventSignOut) {
+57:          _restoreDiagnostic = 'AUTH_EVENT_SIGN_OUT';
+58-          _setAccount(null);
+59-        }
+60-      },
+61-      onError: (Object error, StackTrace stack) {
+62-        _accountChanges.addError(error, stack);
+63-      },
+64-    );
+65-  }
+66-
+67:  String _restoreDiagnostic = 'BELUM_DIPERIKSA';
+68-
+69:  String get restoreDiagnostic => _restoreDiagnostic;
+70-
+71-  Future<GoogleSignInAccount?> restoreAccount() async {
+72:    _restoreDiagnostic = 'INITIALIZING';
+73-    await initialize();
+74-
+75-    if (_account != null) {
+76:      _restoreDiagnostic = 'ACCOUNT_ALREADY_AVAILABLE';
+77-      return _account;
+78-    }
+79-
+80:    _restoreDiagnostic = 'ATTEMPTING_LIGHTWEIGHT_AUTH';
+81-
+82-    try {
+83-      final attempt = _google.attemptLightweightAuthentication(
+84-        reportAllExceptions: true,
+85-      );
+86-
+87-      if (attempt == null) {
+88:        _restoreDiagnostic = 'NO_FUTURE_RETURNED';
+89-        return null;
+90-      }
+91-
+92-      final restored = await attempt;
+93-
+94-      if (restored == null) {
+95:        _restoreDiagnostic = 'FUTURE_RETURNED_NULL';
+96-        return _account;
+97-      }
+98-
+99-      _setAccount(restored);
+100:      _restoreDiagnostic = 'LIGHTWEIGHT_RESTORED';
+101-      return _account;
+102-    } catch (e) {
+103:      _restoreDiagnostic = 'ERROR ${e.runtimeType}: $e';
+104-      rethrow;
+105-    }
+106-  }
+107-
+108-  Future<T> _withDriveApi<T>(
+109-    Future<T> Function(drive.DriveApi api) action,
+110-  ) async {
+111-    final currentAccount = await restoreAccount();
+112-
+113-    if (currentAccount == null) {
+114-      throw StateError('Hubungkan akun Google Drive terlebih dahulu.');
+115-    }
+116-
+117-    final authorizationClient = currentAccount.authorizationClient;
+118-    final authorization =
+119-        await authorizationClient.authorizationForScopes(_scopes) ??
+120-        await authorizationClient.authorizeScopes(_scopes);
+121-
+122-    final client = authorization.authClient(scopes: _scopes);
+123-
+124-    try {
+125-      final api = drive.DriveApi(client);
+126-      return await action(api);
+127-    } finally {
+128-      client.close();
+129-    }
+130-  }
+131-
+132-  void _validateEncryptedFile(List<int> bytes) {
+133-    if (bytes.isEmpty || bytes.length > _maximumBackupBytes) {
+134-      throw const FormatException('Ukuran backup tidak valid.');
+135-    }
+136-
+137-    try {
+138-      final decoded = jsonDecode(utf8.decode(bytes));
+139-
+140-      if (decoded is! Map<String, dynamic> ||
+141-          decoded['format'] != _backupFormat ||
+142-          decoded['version'] != _backupVersion ||
+143-          decoded['cipher'] != 'AES-256-GCM' ||
+144-          decoded['kdf'] != 'PBKDF2-HMAC-SHA256' ||
+145-          decoded['iterations'] != 310000 ||
+146-          decoded['salt'] is! String ||
+147-          decoded['nonce'] is! String ||
+148-          decoded['ciphertext'] is! String ||
+
+===== DIAGNOSTIK SETTINGS =====
+23:  String _googleRestoreStatus = 'Belum diperiksa';
+24-  StreamSubscription<GoogleSignInAccount?>? _googleAccountSubscription;
+25-
+26-  @override
+27-  void initState() {
+28-    super.initState();
+29-
+30-    final google = GoogleDriveService.instance;
+31-    _googleEmail = google.account?.email;
+--
+38:          _googleRestoreStatus =
+39-              GoogleDriveService.instance.restoreDiagnostic;
+40-        });
+41-      },
+42-      onError: (Object error, StackTrace stack) {
+43-        debugPrint('Perubahan sesi Google gagal: $error');
+44-      },
+45-    );
+46-
+--
+65:        _googleRestoreStatus =
+66-            GoogleDriveService.instance.restoreDiagnostic;
+67-      });
+68-    } catch (e) {
+69-      if (!mounted) return;
+70-      setState(() {
+71:        _googleRestoreStatus =
+72-            GoogleDriveService.instance.restoreDiagnostic;
+73-      });
+74-      debugPrint('Pemulihan status Google gagal: $e');
+75-    }
+76-  }
+77-
+78-  Future<void> _connectGoogle() async {
+79-    if (_busy) return;
+--
+539:                        'Diagnostik sesi: $_googleRestoreStatus',
+540-                        style: const TextStyle(fontSize: 11),
+541-                      ),
+542-                    ),
+543-                  ),
+544-                  if (_googleEmail != null) ...[
+545-                    const SizedBox(height: 8),
+546-                    ListTile(
+547-                      contentPadding: EdgeInsets.zero,
+
+===== DIFF CHECK =====
+
+===== DIFF STAT =====
+ lib/screens/settings_screen.dart       | 30 +++++++++++++++++++++++---
+ lib/services/google_drive_service.dart | 39 ++++++++++++++++++++++++++++------
+ 2 files changed, 60 insertions(+), 9 deletions(-)
+
+===== DIFF SERVICE =====
+diff --git a/lib/services/google_drive_service.dart b/lib/services/google_drive_service.dart
+index 4ed5db4..a9253f2 100644
+--- a/lib/services/google_drive_service.dart
++++ b/lib/services/google_drive_service.dart
+@@ -51,8 +51,10 @@ class GoogleDriveService {
+     _authSubscription ??= _google.authenticationEvents.listen(
+       (event) {
+         if (event is GoogleSignInAuthenticationEventSignIn) {
++          _restoreDiagnostic = 'AUTH_EVENT_SIGN_IN';
+           _setAccount(event.user);
+         } else if (event is GoogleSignInAuthenticationEventSignOut) {
++          _restoreDiagnostic = 'AUTH_EVENT_SIGN_OUT';
+           _setAccount(null);
+         }
+       },
+@@ -62,20 +64,45 @@ class GoogleDriveService {
+     );
+   }
+ 
++  String _restoreDiagnostic = 'BELUM_DIPERIKSA';
++
++  String get restoreDiagnostic => _restoreDiagnostic;
++
+   Future<GoogleSignInAccount?> restoreAccount() async {
++    _restoreDiagnostic = 'INITIALIZING';
+     await initialize();
+ 
+-    if (_account != null) return _account;
++    if (_account != null) {
++      _restoreDiagnostic = 'ACCOUNT_ALREADY_AVAILABLE';
++      return _account;
++    }
+ 
+-    final attempt = _google.attemptLightweightAuthentication();
++    _restoreDiagnostic = 'ATTEMPTING_LIGHTWEIGHT_AUTH';
+ 
+-    if (attempt == null) return null;
++    try {
++      final attempt = _google.attemptLightweightAuthentication(
++        reportAllExceptions: true,
++      );
++
++      if (attempt == null) {
++        _restoreDiagnostic = 'NO_FUTURE_RETURNED';
++        return null;
++      }
++
++      final restored = await attempt;
++
++      if (restored == null) {
++        _restoreDiagnostic = 'FUTURE_RETURNED_NULL';
++        return _account;
++      }
+ 
+-    final restored = await attempt;
+-    if (restored != null) {
+       _setAccount(restored);
++      _restoreDiagnostic = 'LIGHTWEIGHT_RESTORED';
++      return _account;
++    } catch (e) {
++      _restoreDiagnostic = 'ERROR ${e.runtimeType}: $e';
++      rethrow;
+     }
+-    return _account;
+   }
+ 
+   Future<T> _withDriveApi<T>(
+
+===== DIFF SETTINGS =====
+diff --git a/lib/screens/settings_screen.dart b/lib/screens/settings_screen.dart
+index 3c206aa..ad3424a 100644
+--- a/lib/screens/settings_screen.dart
++++ b/lib/screens/settings_screen.dart
+@@ -20,6 +20,7 @@ class SettingsScreen extends StatefulWidget {
+ class _SettingsScreenState extends State<SettingsScreen> {
+   bool _busy = false;
+   String? _googleEmail;
++  String _googleRestoreStatus = 'Belum diperiksa';
+   StreamSubscription<GoogleSignInAccount?>? _googleAccountSubscription;
+ 
+   @override
+@@ -32,7 +33,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
+     _googleAccountSubscription = google.accountChanges.listen(
+       (account) {
+         if (!mounted) return;
+-        setState(() => _googleEmail = account?.email);
++        setState(() {
++          _googleEmail = account?.email;
++          _googleRestoreStatus =
++              GoogleDriveService.instance.restoreDiagnostic;
++        });
+       },
+       onError: (Object error, StackTrace stack) {
+         debugPrint('Perubahan sesi Google gagal: $error');
+@@ -53,10 +58,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
+       final account =
+           await GoogleDriveService.instance.restoreAccount();
+ 
+-      if (!mounted || account == null) return;
++      if (!mounted) return;
+ 
+-      setState(() => _googleEmail = account.email);
++      setState(() {
++        _googleEmail = account?.email;
++        _googleRestoreStatus =
++            GoogleDriveService.instance.restoreDiagnostic;
++      });
+     } catch (e) {
++      if (!mounted) return;
++      setState(() {
++        _googleRestoreStatus =
++            GoogleDriveService.instance.restoreDiagnostic;
++      });
+       debugPrint('Pemulihan status Google gagal: $e');
+     }
+   }
+@@ -517,6 +531,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
+                       'Hubungkan akun Google untuk menyiapkan backup cloud.',
+                     ),
+                   ),
++                  Padding(
++                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
++                    child: Align(
++                      alignment: Alignment.centerLeft,
++                      child: Text(
++                        'Diagnostik sesi: $_googleRestoreStatus',
++                        style: const TextStyle(fontSize: 11),
++                      ),
++                    ),
++                  ),
+                   if (_googleEmail != null) ...[
+                     const SizedBox(height: 8),
+                     ListTile(
+
+===== BACKUP TERBARU =====
+backup_diagnostik_google_20261115_111942
