@@ -1,0 +1,158 @@
+===== WAKTU =====
+Sun Nov 15 11:28:17 WIB 2026
+
+===== DIFF CHECK =====
+
+===== DIFF SERVICE GOOGLE DRIVE =====
+diff --git a/lib/services/google_drive_service.dart b/lib/services/google_drive_service.dart
+index 4ed5db4..a9253f2 100644
+--- a/lib/services/google_drive_service.dart
++++ b/lib/services/google_drive_service.dart
+@@ -51,8 +51,10 @@ class GoogleDriveService {
+     _authSubscription ??= _google.authenticationEvents.listen(
+       (event) {
+         if (event is GoogleSignInAuthenticationEventSignIn) {
++          _restoreDiagnostic = 'AUTH_EVENT_SIGN_IN';
+           _setAccount(event.user);
+         } else if (event is GoogleSignInAuthenticationEventSignOut) {
++          _restoreDiagnostic = 'AUTH_EVENT_SIGN_OUT';
+           _setAccount(null);
+         }
+       },
+@@ -62,20 +64,45 @@ class GoogleDriveService {
+     );
+   }
+ 
++  String _restoreDiagnostic = 'BELUM_DIPERIKSA';
++
++  String get restoreDiagnostic => _restoreDiagnostic;
++
+   Future<GoogleSignInAccount?> restoreAccount() async {
++    _restoreDiagnostic = 'INITIALIZING';
+     await initialize();
+ 
+-    if (_account != null) return _account;
++    if (_account != null) {
++      _restoreDiagnostic = 'ACCOUNT_ALREADY_AVAILABLE';
++      return _account;
++    }
+ 
+-    final attempt = _google.attemptLightweightAuthentication();
++    _restoreDiagnostic = 'ATTEMPTING_LIGHTWEIGHT_AUTH';
+ 
+-    if (attempt == null) return null;
++    try {
++      final attempt = _google.attemptLightweightAuthentication(
++        reportAllExceptions: true,
++      );
++
++      if (attempt == null) {
++        _restoreDiagnostic = 'NO_FUTURE_RETURNED';
++        return null;
++      }
++
++      final restored = await attempt;
++
++      if (restored == null) {
++        _restoreDiagnostic = 'FUTURE_RETURNED_NULL';
++        return _account;
++      }
+ 
+-    final restored = await attempt;
+-    if (restored != null) {
+       _setAccount(restored);
++      _restoreDiagnostic = 'LIGHTWEIGHT_RESTORED';
++      return _account;
++    } catch (e) {
++      _restoreDiagnostic = 'ERROR ${e.runtimeType}: $e';
++      rethrow;
+     }
+-    return _account;
+   }
+ 
+   Future<T> _withDriveApi<T>(
+
+===== DIFF SETTINGS SCREEN =====
+diff --git a/lib/screens/settings_screen.dart b/lib/screens/settings_screen.dart
+index 3c206aa..ad3424a 100644
+--- a/lib/screens/settings_screen.dart
++++ b/lib/screens/settings_screen.dart
+@@ -20,6 +20,7 @@ class SettingsScreen extends StatefulWidget {
+ class _SettingsScreenState extends State<SettingsScreen> {
+   bool _busy = false;
+   String? _googleEmail;
++  String _googleRestoreStatus = 'Belum diperiksa';
+   StreamSubscription<GoogleSignInAccount?>? _googleAccountSubscription;
+ 
+   @override
+@@ -32,7 +33,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
+     _googleAccountSubscription = google.accountChanges.listen(
+       (account) {
+         if (!mounted) return;
+-        setState(() => _googleEmail = account?.email);
++        setState(() {
++          _googleEmail = account?.email;
++          _googleRestoreStatus =
++              GoogleDriveService.instance.restoreDiagnostic;
++        });
+       },
+       onError: (Object error, StackTrace stack) {
+         debugPrint('Perubahan sesi Google gagal: $error');
+@@ -53,10 +58,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
+       final account =
+           await GoogleDriveService.instance.restoreAccount();
+ 
+-      if (!mounted || account == null) return;
++      if (!mounted) return;
+ 
+-      setState(() => _googleEmail = account.email);
++      setState(() {
++        _googleEmail = account?.email;
++        _googleRestoreStatus =
++            GoogleDriveService.instance.restoreDiagnostic;
++      });
+     } catch (e) {
++      if (!mounted) return;
++      setState(() {
++        _googleRestoreStatus =
++            GoogleDriveService.instance.restoreDiagnostic;
++      });
+       debugPrint('Pemulihan status Google gagal: $e');
+     }
+   }
+@@ -517,6 +531,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
+                       'Hubungkan akun Google untuk menyiapkan backup cloud.',
+                     ),
+                   ),
++                  Padding(
++                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
++                    child: Align(
++                      alignment: Alignment.centerLeft,
++                      child: Text(
++                        'Diagnostik sesi: $_googleRestoreStatus',
++                        style: const TextStyle(fontSize: 11),
++                      ),
++                    ),
++                  ),
+                   if (_googleEmail != null) ...[
+                     const SizedBox(height: 8),
+                     ListTile(
+
+===== STATUS GIT =====
+M  lib/screens/settings_screen.dart
+M  lib/services/google_drive_service.dart
+?? backup_diagnostik_google_20261115_111942/
+?? backup_fix_google_import_20261115_104148/
+?? backup_google_login_20261114_185251/
+?? backup_google_session_20261115_102650/
+?? backup_sebelum_cloud_ui_20261114_225058/
+?? backup_sebelum_cloud_ui_20261114_225846/
+?? backup_sebelum_fix_sqlite_20261114_231957/
+?? backup_sebelum_google_20261114_184301/
+?? backup_sebelum_integrasi_drive_20261114_221515/
+?? backup_sebelum_pin_ffi_20261114_230953/
+?? backup_sebelum_settings_20261114_164203/
+?? backup_sebelum_test_restore_20261114_230544/
+?? backup_sebelum_update_siklus/
+?? backup_status_google_20261114_192221/
+?? patchv3.py
