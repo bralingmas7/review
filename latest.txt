@@ -1,21 +1,18 @@
 ===== WAKTU =====
-Sun Nov 15 11:24:42 WIB 2026
+Sun Nov 15 11:27:30 WIB 2026
 
-===== LOKASI FLUTTER =====
+===== DIFF CHECK =====
 
-===== PATH =====
-/data/data/com.termux/files/usr/bin
+===== STAGING DUA FILE =====
 
-===== KANDIDAT LOKASI SDK =====
-ls: cannot access '/data/data/com.termux/files/home/flutter': No such file or directory
-ls: cannot access '/data/data/com.termux/files/home/development/flutter': No such file or directory
-ls: cannot access '/opt/flutter': No such file or directory
-
-===== PENCARIAN BIN FLUTTER =====
+===== STAGED DIFF STAT =====
+ lib/screens/settings_screen.dart       | 30 +++++++++++++++++++++++---
+ lib/services/google_drive_service.dart | 39 ++++++++++++++++++++++++++++------
+ 2 files changed, 60 insertions(+), 9 deletions(-)
 
 ===== STATUS GIT =====
- M lib/screens/settings_screen.dart
- M lib/services/google_drive_service.dart
+M  lib/screens/settings_screen.dart
+M  lib/services/google_drive_service.dart
 ?? backup_diagnostik_google_20261115_111942/
 ?? backup_fix_google_import_20261115_104148/
 ?? backup_google_login_20261114_185251/
@@ -31,3 +28,7 @@ ls: cannot access '/opt/flutter': No such file or directory
 ?? backup_sebelum_update_siklus/
 ?? backup_status_google_20261114_192221/
 ?? patchv3.py
+
+===== FILE BACKUP TIDAK DI-STAGE =====
+lib/screens/settings_screen.dart
+lib/services/google_drive_service.dart

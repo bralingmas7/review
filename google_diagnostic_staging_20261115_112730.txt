@@ -1,0 +1,34 @@
+===== WAKTU =====
+Sun Nov 15 11:27:30 WIB 2026
+
+===== DIFF CHECK =====
+
+===== STAGING DUA FILE =====
+
+===== STAGED DIFF STAT =====
+ lib/screens/settings_screen.dart       | 30 +++++++++++++++++++++++---
+ lib/services/google_drive_service.dart | 39 ++++++++++++++++++++++++++++------
+ 2 files changed, 60 insertions(+), 9 deletions(-)
+
+===== STATUS GIT =====
+M  lib/screens/settings_screen.dart
+M  lib/services/google_drive_service.dart
+?? backup_diagnostik_google_20261115_111942/
+?? backup_fix_google_import_20261115_104148/
+?? backup_google_login_20261114_185251/
+?? backup_google_session_20261115_102650/
+?? backup_sebelum_cloud_ui_20261114_225058/
+?? backup_sebelum_cloud_ui_20261114_225846/
+?? backup_sebelum_fix_sqlite_20261114_231957/
+?? backup_sebelum_google_20261114_184301/
+?? backup_sebelum_integrasi_drive_20261114_221515/
+?? backup_sebelum_pin_ffi_20261114_230953/
+?? backup_sebelum_settings_20261114_164203/
+?? backup_sebelum_test_restore_20261114_230544/
+?? backup_sebelum_update_siklus/
+?? backup_status_google_20261114_192221/
+?? patchv3.py
+
+===== FILE BACKUP TIDAK DI-STAGE =====
+lib/screens/settings_screen.dart
+lib/services/google_drive_service.dart
