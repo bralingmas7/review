@@ -1,13 +1,6 @@
-===== BACKUP =====
-backup_google_session_20261115_102650
-
-===== VERSI FLUTTER =====
-No command flutter found, did you mean:
- Command cluster in package graphviz
- Command mutter in package mutter from the x11-repo repository
- Command cluttex in package texlive-bin
-
 ===== STATUS GIT =====
+ M lib/screens/settings_screen.dart
+ M lib/services/google_drive_service.dart
 ?? backup_google_login_20261114_185251/
 ?? backup_google_session_20261115_102650/
 ?? backup_sebelum_cloud_ui_20261114_225058/
@@ -22,45 +15,153 @@ No command flutter found, did you mean:
 ?? backup_status_google_20261114_192221/
 ?? patchv3.py
 
-===== VERSI GOOGLE SIGN IN =====
-17:  google_sign_in: ^7.2.0
-grep: pubspec.lock: No such file or directory
+===== DIFF CHECK =====
 
-===== SERVICE GOOGLE =====
-33:  Future<void> initialize() {
-34:    return _initialization ??= _google.initialize(
-39:  Future<GoogleSignInAccount?> restoreAccount() async {
-40:    await initialize();
-55:    final currentAccount = await restoreAccount();
-62:        .authorizeScopes(_scopes);
-199:    await initialize();
-205:    final account = await _google.authenticate();
-209:        await account.authorizationClient.authorizeScopes(_scopes);
-227:  Future<void> signOut() async {
-228:    await initialize();
-229:    await _google.signOut();
-234:    await signOut();
+===== DIFF STAT =====
+ lib/screens/settings_screen.dart       | 23 ++++++++++++++--
+ lib/services/google_drive_service.dart | 49 ++++++++++++++++++++++++++++------
+ 2 files changed, 62 insertions(+), 10 deletions(-)
 
-===== STATUS UI =====
-20:  String? _googleEmail;
-27:    _googleEmail = GoogleDriveService.instance.account?.email;
-28:    _restoreGoogleStatus();
-31:  Future<void> _restoreGoogleStatus() async {
-38:      setState(() => _googleEmail = account.email);
-53:      setState(() => _googleEmail = email);
-71:      setState(() => _googleEmail = email);
-88:      setState(() => _googleEmail = null);
-297:  Future<void> _cloudBackup() async {
-298:    if (_busy || _googleEmail == null) return;
-321:  Future<void> _cloudRestore() async {
-322:    if (_busy || _googleEmail == null) return;
-500:                  if (_googleEmail != null) ...[
-506:                      subtitle: Text(_googleEmail!),
-533:                  if (_googleEmail != null) ...[
-538:                        onPressed: _busy ? null : _cloudBackup,
-547:                        onPressed: _busy ? null : _cloudRestore,
+===== DIFF SERVICE =====
+diff --git a/lib/services/google_drive_service.dart b/lib/services/google_drive_service.dart
+index 421a11a..4ed5db4 100644
+--- a/lib/services/google_drive_service.dart
++++ b/lib/services/google_drive_service.dart
+@@ -27,12 +27,38 @@ class GoogleDriveService {
+   final GoogleSignIn _google = GoogleSignIn.instance;
+   Future<void>? _initialization;
+   GoogleSignInAccount? _account;
++  StreamSubscription<GoogleSignInAuthenticationEvent>? _authSubscription;
++
++  final StreamController<GoogleSignInAccount?> _accountChanges =
++      StreamController<GoogleSignInAccount?>.broadcast();
+ 
+   GoogleSignInAccount? get account => _account;
++  Stream<GoogleSignInAccount?> get accountChanges =>
++      _accountChanges.stream;
++
++  void _setAccount(GoogleSignInAccount? account) {
++    _account = account;
++    _accountChanges.add(account);
++  }
+ 
+   Future<void> initialize() {
+-    return _initialization ??= _google.initialize(
+-      serverClientId: _serverClientId,
++    return _initialization ??= _initialize();
++  }
++
++  Future<void> _initialize() async {
++    await _google.initialize(serverClientId: _serverClientId);
++
++    _authSubscription ??= _google.authenticationEvents.listen(
++      (event) {
++        if (event is GoogleSignInAuthenticationEventSignIn) {
++          _setAccount(event.user);
++        } else if (event is GoogleSignInAuthenticationEventSignOut) {
++          _setAccount(null);
++        }
++      },
++      onError: (Object error, StackTrace stack) {
++        _accountChanges.addError(error, stack);
++      },
+     );
+   }
+ 
+@@ -45,7 +71,10 @@ class GoogleDriveService {
+ 
+     if (attempt == null) return null;
+ 
+-    _account = await attempt;
++    final restored = await attempt;
++    if (restored != null) {
++      _setAccount(restored);
++    }
+     return _account;
+   }
+ 
+@@ -58,8 +87,10 @@ class GoogleDriveService {
+       throw StateError('Hubungkan akun Google Drive terlebih dahulu.');
+     }
+ 
+-    final authorization = await currentAccount.authorizationClient
+-        .authorizeScopes(_scopes);
++    final authorizationClient = currentAccount.authorizationClient;
++    final authorization =
++        await authorizationClient.authorizationForScopes(_scopes) ??
++        await authorizationClient.authorizeScopes(_scopes);
+ 
+     final client = authorization.authClient(scopes: _scopes);
+ 
+@@ -203,10 +234,12 @@ class GoogleDriveService {
+     }
+ 
+     final account = await _google.authenticate();
+-    _account = account;
++    _setAccount(account);
+ 
++    final authorizationClient = account.authorizationClient;
+     final authorization =
+-        await account.authorizationClient.authorizeScopes(_scopes);
++        await authorizationClient.authorizationForScopes(_scopes) ??
++        await authorizationClient.authorizeScopes(_scopes);
+ 
+     final client = authorization.authClient(scopes: _scopes);
+ 
+@@ -227,7 +260,7 @@ class GoogleDriveService {
+   Future<void> signOut() async {
+     await initialize();
+     await _google.signOut();
+-    _account = null;
++    _setAccount(null);
+   }
+ 
+   Future<String> switchAccount() async {
 
-===== BACKUP FILE =====
-total 28K
--rw-------. 1 u0_a523 u0_a523 6.2K Nov 15 10:26 google_drive_service.dart
--rw-------. 1 u0_a523 u0_a523  19K Nov 15 10:26 settings_screen.dart
+===== DIFF SETTINGS =====
+diff --git a/lib/screens/settings_screen.dart b/lib/screens/settings_screen.dart
+index 12d3e2b..f042d48 100644
+--- a/lib/screens/settings_screen.dart
++++ b/lib/screens/settings_screen.dart
+@@ -1,3 +1,4 @@
++import 'dart:async';
+ import 'dart:convert';
+ import 'dart:typed_data';
+ 
+@@ -18,16 +19,34 @@ class SettingsScreen extends StatefulWidget {
+ class _SettingsScreenState extends State<SettingsScreen> {
+   bool _busy = false;
+   String? _googleEmail;
++  StreamSubscription<GoogleSignInAccount?>? _googleAccountSubscription;
+ 
+   @override
+   void initState() {
+     super.initState();
+ 
+-    // Pulihkan tampilan akun saat halaman Pengaturan dibuka kembali.
+-    _googleEmail = GoogleDriveService.instance.account?.email;
++    final google = GoogleDriveService.instance;
++    _googleEmail = google.account?.email;
++
++    _googleAccountSubscription = google.accountChanges.listen(
++      (account) {
++        if (!mounted) return;
++        setState(() => _googleEmail = account?.email);
++      },
++      onError: (Object error, StackTrace stack) {
++        debugPrint('Perubahan sesi Google gagal: $error');
++      },
++    );
++
+     _restoreGoogleStatus();
+   }
+ 
++  @override
++  void dispose() {
++    _googleAccountSubscription?.cancel();
++    super.dispose();
++  }
++
+   Future<void> _restoreGoogleStatus() async {
+     try {
+       final account =
