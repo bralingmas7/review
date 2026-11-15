@@ -1,12 +1,21 @@
-===== BACKUP PATCH LOKAL =====
-Backup: backup_before_revert_lightweight_20261115_133121
+===== BACKUP =====
+Backup: backup_cloud_reconnect_20261115_133235
 
-===== KEMBALIKAN SERVICE KE HEAD =====
+===== CEK KONDISI AWAL =====
+
+===== PATCH =====
+PATCH BERHASIL: backup, restore, dan tombol cloud.
 
 ===== DIFF CHECK =====
 
+===== DIFF STAT =====
+ lib/screens/settings_screen.dart | 26 +++++++++++++++++---------
+ 1 file changed, 17 insertions(+), 9 deletions(-)
+
 ===== STATUS =====
+ M lib/screens/settings_screen.dart
 ?? backup_before_revert_lightweight_20261115_133121/
+?? backup_cloud_reconnect_20261115_133235/
 ?? backup_diagnostik_google_20261115_111942/
 ?? backup_fix_google_import_20261115_104148/
 ?? backup_google_login_20261114_185251/
@@ -29,4 +38,65 @@ Backup: backup_before_revert_lightweight_20261115_133121
 ?? patch_google_session.py
 ?? patchv3.py
 
-===== DIFF STAT =====
+===== DIFF =====
+diff --git a/lib/screens/settings_screen.dart b/lib/screens/settings_screen.dart
+index b19c298..aa81735 100644
+--- a/lib/screens/settings_screen.dart
++++ b/lib/screens/settings_screen.dart
+@@ -338,12 +338,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
+   Future<void> _cloudBackup() async {
+     if (_busy || _googleEmail == null) return;
+ 
+-    final password = await _askCloudPassword(confirm: true);
+-    if (password == null || !mounted) return;
+-
+     setState(() => _busy = true);
+ 
+     try {
++      if (GoogleDriveService.instance.account == null) {
++        final email = await GoogleDriveService.instance.connectAndTest();
++        if (!mounted) return;
++        setState(() => _googleEmail = email);
++      }
++
++      final password = await _askCloudPassword(confirm: true);
++      if (password == null || !mounted) return;
++
+       final data = await AppDb.instance.exportBackup();
+       final encrypted =
+           await BackupCryptoService.instance.encryptBackup(data, password);
+@@ -365,6 +371,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
+     setState(() => _busy = true);
+ 
+     try {
++      if (GoogleDriveService.instance.account == null) {
++        final email = await GoogleDriveService.instance.connectAndTest();
++        if (!mounted) return;
++        setState(() => _googleEmail = email);
++      }
++
+       final files =
+           await GoogleDriveService.instance.listEncryptedBackups();
+ 
+@@ -597,9 +609,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
+                     SizedBox(
+                       width: double.infinity,
+                       child: FilledButton.icon(
+-                        onPressed: _busy || GoogleDriveService.instance.account == null
+-                            ? null
+-                            : _cloudBackup,
++                        onPressed: _busy ? null : _cloudBackup,
+                         icon: const Icon(Icons.cloud_upload_outlined),
+                         label: const Text('Backup ke Google Drive'),
+                       ),
+@@ -608,9 +618,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
+                     SizedBox(
+                       width: double.infinity,
+                       child: OutlinedButton.icon(
+-                        onPressed: _busy || GoogleDriveService.instance.account == null
+-                            ? null
+-                            : _cloudRestore,
++                        onPressed: _busy ? null : _cloudRestore,
+                         icon: const Icon(Icons.cloud_download_outlined),
+                         label: const Text('Pulihkan dari Google Drive'),
+                       ),
