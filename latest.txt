@@ -1,12 +1,19 @@
-===== FLUTTER ANALYZE =====
-No command flutter found, did you mean:
- Command cluster in package graphviz
- Command mutter in package mutter from the x11-repo repository
- Command cluttex in package texlive-bin
+===== WAKTU =====
+Sun Nov 15 11:24:42 WIB 2026
 
-===== DIFF CHECK =====
+===== LOKASI FLUTTER =====
 
-===== STATUS =====
+===== PATH =====
+/data/data/com.termux/files/usr/bin
+
+===== KANDIDAT LOKASI SDK =====
+ls: cannot access '/data/data/com.termux/files/home/flutter': No such file or directory
+ls: cannot access '/data/data/com.termux/files/home/development/flutter': No such file or directory
+ls: cannot access '/opt/flutter': No such file or directory
+
+===== PENCARIAN BIN FLUTTER =====
+
+===== STATUS GIT =====
  M lib/screens/settings_screen.dart
  M lib/services/google_drive_service.dart
 ?? backup_diagnostik_google_20261115_111942/
