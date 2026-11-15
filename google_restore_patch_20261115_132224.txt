@@ -1,0 +1,63 @@
+===== GOOGLE RESTORE PATCH =====
+Tanggal: 20261115_132224
+Backup: backup_google_restore_20261115_132224
+
+===== DIFF CHECK =====
+Exit code: 0
+
+===== DIFF =====
+diff --git a/lib/services/google_drive_service.dart b/lib/services/google_drive_service.dart
+index d0669fe..6230e84 100644
+--- a/lib/services/google_drive_service.dart
++++ b/lib/services/google_drive_service.dart
+@@ -83,6 +83,26 @@ class GoogleDriveService {
+       return _account;
+     }
+ 
++    _restoreDiagnostic = 'LIGHTWEIGHT_AUTH_ATTEMPT';
++
++    final attempt = _google.attemptLightweightAuthentication();
++
++    if (attempt == null) {
++      _restoreDiagnostic = 'WAITING_AUTH_EVENT';
++      return _account;
++    }
++
++    final restoredAccount = await attempt;
++
++    if (restoredAccount != null) {
++      if (_account == null) {
++        _setAccount(restoredAccount);
++      }
++
++      _restoreDiagnostic = 'SESSION_RESTORED_LIGHTWEIGHT';
++      return _account ?? restoredAccount;
++    }
++
+     _restoreDiagnostic = 'NO_ACTIVE_SESSION';
+     return null;
+   }
+
+===== GIT STATUS =====
+ M lib/services/google_drive_service.dart
+?? backup_diagnostik_google_20261115_111942/
+?? backup_fix_google_import_20261115_104148/
+?? backup_google_login_20261114_185251/
+?? backup_google_restore_20261115_132224/
+?? backup_google_session_20261115_102650/
+?? backup_google_session_fix_20261115_123805/
+?? backup_google_session_fix_20261115_124655/
+?? backup_listener_google_20261115_125040/
+?? backup_sebelum_cloud_ui_20261114_225058/
+?? backup_sebelum_cloud_ui_20261114_225846/
+?? backup_sebelum_fix_sqlite_20261114_231957/
+?? backup_sebelum_google_20261114_184301/
+?? backup_sebelum_integrasi_drive_20261114_221515/
+?? backup_sebelum_pin_ffi_20261114_230953/
+?? backup_sebelum_pin_shared_preferences_20261115_124930/
+?? backup_sebelum_settings_20261114_164203/
+?? backup_sebelum_test_restore_20261114_230544/
+?? backup_sebelum_update_siklus/
+?? backup_status_google_20261114_192221/
+?? patch_google_session.py
+?? patchv3.py
