@@ -1,0 +1,66 @@
+===== BACKUP =====
+backup_google_session_20261115_102650
+
+===== VERSI FLUTTER =====
+No command flutter found, did you mean:
+ Command cluster in package graphviz
+ Command mutter in package mutter from the x11-repo repository
+ Command cluttex in package texlive-bin
+
+===== STATUS GIT =====
+?? backup_google_login_20261114_185251/
+?? backup_google_session_20261115_102650/
+?? backup_sebelum_cloud_ui_20261114_225058/
+?? backup_sebelum_cloud_ui_20261114_225846/
+?? backup_sebelum_fix_sqlite_20261114_231957/
+?? backup_sebelum_google_20261114_184301/
+?? backup_sebelum_integrasi_drive_20261114_221515/
+?? backup_sebelum_pin_ffi_20261114_230953/
+?? backup_sebelum_settings_20261114_164203/
+?? backup_sebelum_test_restore_20261114_230544/
+?? backup_sebelum_update_siklus/
+?? backup_status_google_20261114_192221/
+?? patchv3.py
+
+===== VERSI GOOGLE SIGN IN =====
+17:  google_sign_in: ^7.2.0
+grep: pubspec.lock: No such file or directory
+
+===== SERVICE GOOGLE =====
+33:  Future<void> initialize() {
+34:    return _initialization ??= _google.initialize(
+39:  Future<GoogleSignInAccount?> restoreAccount() async {
+40:    await initialize();
+55:    final currentAccount = await restoreAccount();
+62:        .authorizeScopes(_scopes);
+199:    await initialize();
+205:    final account = await _google.authenticate();
+209:        await account.authorizationClient.authorizeScopes(_scopes);
+227:  Future<void> signOut() async {
+228:    await initialize();
+229:    await _google.signOut();
+234:    await signOut();
+
+===== STATUS UI =====
+20:  String? _googleEmail;
+27:    _googleEmail = GoogleDriveService.instance.account?.email;
+28:    _restoreGoogleStatus();
+31:  Future<void> _restoreGoogleStatus() async {
+38:      setState(() => _googleEmail = account.email);
+53:      setState(() => _googleEmail = email);
+71:      setState(() => _googleEmail = email);
+88:      setState(() => _googleEmail = null);
+297:  Future<void> _cloudBackup() async {
+298:    if (_busy || _googleEmail == null) return;
+321:  Future<void> _cloudRestore() async {
+322:    if (_busy || _googleEmail == null) return;
+500:                  if (_googleEmail != null) ...[
+506:                      subtitle: Text(_googleEmail!),
+533:                  if (_googleEmail != null) ...[
+538:                        onPressed: _busy ? null : _cloudBackup,
+547:                        onPressed: _busy ? null : _cloudRestore,
+
+===== BACKUP FILE =====
+total 28K
+-rw-------. 1 u0_a523 u0_a523 6.2K Nov 15 10:26 google_drive_service.dart
+-rw-------. 1 u0_a523 u0_a523  19K Nov 15 10:26 settings_screen.dart
