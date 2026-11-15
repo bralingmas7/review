@@ -1,0 +1,120 @@
+===== FIX GOOGLE LISTENER =====
+Sun Nov 15 12:50:40 WIB 2026
+BACKUP: backup_listener_google_20261115_125040
+
+===== DIFF CHECK =====
+
+===== DIFF LISTENER =====
+diff --git a/lib/screens/settings_screen.dart b/lib/screens/settings_screen.dart
+index ad3424a..d7560ef 100644
+--- a/lib/screens/settings_screen.dart
++++ b/lib/screens/settings_screen.dart
+@@ -32,9 +32,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
+ 
+     _googleAccountSubscription = google.accountChanges.listen(
+       (account) {
+-        if (!mounted) return;
++        // Event tanpa akun tidak menghapus identitas yang tersimpan.
++        // Logout eksplisit ditangani oleh _signOutGoogle().
++        if (!mounted || account == null) return;
++
+         setState(() {
+-          _googleEmail = account?.email;
++          _googleEmail = account.email;
+           _googleRestoreStatus =
+               GoogleDriveService.instance.restoreDiagnostic;
+         });
+@@ -55,15 +58,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
+ 
+   Future<void> _restoreGoogleStatus() async {
+     try {
+-      final account =
+-          await GoogleDriveService.instance.restoreAccount();
++      final google = GoogleDriveService.instance;
++      final account = await google.restoreAccount();
++      final savedEmail = await google.loadSavedAccountEmail();
+ 
+       if (!mounted) return;
+ 
+       setState(() {
+-        _googleEmail = account?.email;
+-        _googleRestoreStatus =
+-            GoogleDriveService.instance.restoreDiagnostic;
++        _googleEmail = account?.email ?? savedEmail;
++        _googleRestoreStatus = account != null
++            ? 'SESI_AKTIF'
++            : savedEmail != null
++                ? 'IDENTITAS_TERSIMPAN_SESI_BELUM_AKTIF'
++                : 'BELUM_TERHUBUNG';
+       });
+     } catch (e) {
+       if (!mounted) return;
+@@ -546,9 +553,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
+                     ListTile(
+                       contentPadding: EdgeInsets.zero,
+                       leading: const Icon(Icons.account_circle_outlined),
+-                      title: const Text('Akun terhubung'),
++                      title: const Text('Akun Google terakhir digunakan'),
+                       subtitle: Text(_googleEmail!),
+                     ),
++                    if (GoogleDriveService.instance.account == null) ...[
++                      const SizedBox(height: 8),
++                      SizedBox(
++                        width: double.infinity,
++                        child: FilledButton.icon(
++                          onPressed: _busy ? null : _connectGoogle,
++                          icon: const Icon(Icons.login),
++                          label: const Text('Hubungkan ulang sesi Google'),
++                        ),
++                      ),
++                    ],
+                     SizedBox(
+                       width: double.infinity,
+                       child: OutlinedButton.icon(
+@@ -579,7 +597,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
+                     SizedBox(
+                       width: double.infinity,
+                       child: FilledButton.icon(
+-                        onPressed: _busy ? null : _cloudBackup,
++                        onPressed: _busy || GoogleDriveService.instance.account == null
++                            ? null
++                            : _cloudBackup,
+                         icon: const Icon(Icons.cloud_upload_outlined),
+                         label: const Text('Backup ke Google Drive'),
+                       ),
+@@ -588,7 +608,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
+                     SizedBox(
+                       width: double.infinity,
+                       child: OutlinedButton.icon(
+-                        onPressed: _busy ? null : _cloudRestore,
++                        onPressed: _busy || GoogleDriveService.instance.account == null
++                            ? null
++                            : _cloudRestore,
+                         icon: const Icon(Icons.cloud_download_outlined),
+                         label: const Text('Pulihkan dari Google Drive'),
+                       ),
+
+===== GIT STATUS =====
+ M lib/screens/settings_screen.dart
+ M lib/services/google_drive_service.dart
+ M pubspec.yaml
+?? backup_diagnostik_google_20261115_111942/
+?? backup_fix_google_import_20261115_104148/
+?? backup_google_login_20261114_185251/
+?? backup_google_session_20261115_102650/
+?? backup_google_session_fix_20261115_123805/
+?? backup_google_session_fix_20261115_124655/
+?? backup_listener_google_20261115_125040/
+?? backup_sebelum_cloud_ui_20261114_225058/
+?? backup_sebelum_cloud_ui_20261114_225846/
+?? backup_sebelum_fix_sqlite_20261114_231957/
+?? backup_sebelum_google_20261114_184301/
+?? backup_sebelum_integrasi_drive_20261114_221515/
+?? backup_sebelum_pin_ffi_20261114_230953/
+?? backup_sebelum_pin_shared_preferences_20261115_124930/
+?? backup_sebelum_settings_20261114_164203/
+?? backup_sebelum_test_restore_20261114_230544/
+?? backup_sebelum_update_siklus/
+?? backup_status_google_20261114_192221/
+?? patch_google_session.py
+?? patchv3.py
