@@ -1,0 +1,15 @@
+===== VERIFIKASI CETAK PNG =====
+Tue Nov 17 06:15:24 WIB 2026
+
+===== KETERSEDIAAN FLUTTER DAN DART =====
+
+FLUTTER TIDAK TERSEDIA DI TERMUX.
+Pemeriksaan compile dan build harus dilakukan melalui GitHub Actions.
+
+===== PEMERIKSAAN PATCH =====
+EXIT DIFF CHECK: 0
+
+===== STATUS FILE CETAK =====
+ M lib/screens/customer_screen.dart
+ M pubspec.yaml
+?? lib/screens/receipt_image_screen.dart
