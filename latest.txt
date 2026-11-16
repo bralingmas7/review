@@ -1,140 +1,23 @@
-===== WORKFLOW: SCAFFOLD ANDROID =====
-name: Build APK
-
-on:
-  push:
-    branches: [main, master]
-  workflow_dispatch:
-
-permissions:
-  contents: read
-
-jobs:
-  build:
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v5
-
-      - name: Setup Java
-        uses: actions/setup-java@v5
-        with:
-          distribution: temurin
-          java-version: "21"
-
-      - name: Setup Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          channel: stable
-          cache: true
-
-      # Buat scaffold Android tanpa kehilangan kode aplikasi
-      - name: Buat scaffold Android
-        run: |
-          set -euo pipefail
-
-          mkdir -p "$RUNNER_TEMP/bak"
-          cp -r lib test pubspec.yaml "$RUNNER_TEMP/bak/"
-
-          flutter create --platforms=android \
-            --org id.warung \
-            --project-name buku_utang_warung .
-
-          rm -rf lib test pubspec.yaml
-          cp -r "$RUNNER_TEMP/bak/lib" lib
-          cp -r "$RUNNER_TEMP/bak/test" test
-          cp "$RUNNER_TEMP/bak/pubspec.yaml" pubspec.yaml
-
-          sed -i 's/android:label="[^"]*"/android:label="Buku Utang Warung"/' \
-            android/app/src/main/AndroidManifest.xml
-
-          # Kunci Android Keystore tidak boleh dipindahkan oleh Android Auto Backup.
-          python3 - <<'PYSECURE'
-          from pathlib import Path
-
-          manifest = Path("android/app/src/main/AndroidManifest.xml")
-          text = manifest.read_text()
-          start = text.find("<application")
-          if start < 0:
-              raise SystemExit("Tag application tidak ditemukan.")
-
-          end = text.find(">", start)
-          if end < 0:
-              raise SystemExit("Tag application tidak lengkap.")
-
-          tag = text[start:end + 1]
-          if "android:allowBackup=" in tag:
-              raise SystemExit("allowBackup sudah diatur; periksa manual.")
-
-          text = text[:end] + ' android:allowBackup="false"' + text[end:]
-          manifest.write_text(text)
-          print("Android Auto Backup dinonaktifkan.")
-          PYSECURE
+===== VERIFIKASI DEPENDENSI CETAK PNG =====
+Tue Nov 17 06:10:21 WIB 2026
+22:  flutter_secure_storage: ^11.2.0
+23:  connectivity_plus: ^7.3.2
+24:  gal: ^2.3.3
+25:  share_plus: ^10.1.4
 
 
-      # Siapkan keystore dari GitHub Secrets
-
-===== WORKFLOW: MODIFIKASI MANIFEST =====
-          debug_pattern = re.compile(
-              r'(?m)^([ \t]*)signingConfig\s*=\s*signingConfigs\.getByName\("debug"\)[ \t]*$'
-          )
-          debug = list(debug_pattern.finditer(text))
-
-          if len(debug) != 1:
-              raise SystemExit("Referensi signing debug tidak ditemukan atau ambigu")
-
-          indent = re.match(r'[ \t]*', text[android[0].start():]).group(0)
-          child = indent + "    "
-          grand = child + "    "
-
-          signing = (
-              "\n" + child + "signingConfigs {\n"
-              + grand + 'create("release") {\n'
-              + grand + '    keyAlias = System.getenv("KEY_ALIAS") ?: error("KEY_ALIAS belum tersedia")\n'
-              + grand + '    keyPassword = System.getenv("KEY_PASSWORD") ?: error("KEY_PASSWORD belum tersedia")\n'
-              + grand + '    storeFile = file(System.getenv("KEYSTORE_FILE") ?: error("KEYSTORE_FILE belum tersedia"))\n'
-              + grand + '    storePassword = System.getenv("KEYSTORE_PASSWORD") ?: error("KEYSTORE_PASSWORD belum tersedia")\n'
-              + grand + "}\n"
-              + child + "}\n"
-          )
-
-          pos = android[0].end()
-          text = text[:pos] + signing + text[pos:]
-
-          text, count = debug_pattern.subn(
-              r'\1signingConfig = signingConfigs.getByName("release")',
-              text,
-              count=1
-          )
-
-          if count != 1:
-              raise SystemExit("Penggantian signing gagal")
-
-          path.write_text(text)
-          print("Signing release berhasil dikonfigurasi")
-          PY
-
-      - name: Install dependency
-        run: flutter pub get
-
-      - name: Jalankan test
-        run: flutter test
-
-      # Build menggunakan keystore permanen
-
-===== STRUKTUR LIB =====
-lib/db.dart
-lib/dialogs.dart
-lib/main.dart
-lib/models.dart
-lib/screens/customer_screen.dart
-lib/screens/home_screen.dart
-lib/screens/settings_screen.dart
-lib/services/backup_crypto_service.dart
-lib/services/backup_status.dart
-lib/services/google_drive_service.dart
-lib/services/shop_message_settings.dart
-lib/status_style.dart
-lib/utils.dart
-lib/widgets/backup_indicator.dart
+diff --git a/pubspec.yaml b/pubspec.yaml
+index 90d41c3..85637be 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -19,6 +19,10 @@ dependencies:
+   extension_google_sign_in_as_googleapis_auth: ^3.0.0
+   cryptography: ^2.7.0
+   shared_preferences: 2.3.1
++  flutter_secure_storage: ^11.2.0
++  connectivity_plus: ^7.3.2
++  gal: ^2.3.3
++  share_plus: ^10.1.4
+ 
+ dev_dependencies:
+   flutter_test:
