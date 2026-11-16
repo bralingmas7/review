@@ -1,0 +1,115 @@
+===== APP LOCK INTEGRITY PATCH =====
+Mon Nov 16 21:05:14 WIB 2026
+
+===== BACKUP =====
+Backup: backup_app_lock_integrity_20261116_210514
+
+===== APPLY PATCH =====
+Patch tiga file berhasil diterapkan.
+
+===== DIFF CHECK =====
+Whitespace check: OK
+
+===== ENUM DAN PEMAKAIAN =====
+lib/screens/lock_screen.dart-121-          _message = 'PIN salah. Sisa percobaan: ${check.remainingAttempts}';
+lib/screens/lock_screen.dart-122-        });
+lib/screens/lock_screen.dart-123-        break;
+lib/screens/lock_screen.dart:124:      case PinResult.corrupt:
+lib/screens/lock_screen.dart-125-        setState(() {
+lib/screens/lock_screen.dart-126-          _busy = false;
+lib/screens/lock_screen.dart-127-          _pin = '';
+lib/screens/lock_screen.dart-128-          _message = 'Data PIN bermasalah. Gunakan opsi Lupa PIN? '
+--
+lib/screens/pin_screen.dart-79-          _message = 'PIN salah. Sisa percobaan: ${check.remainingAttempts}';
+lib/screens/pin_screen.dart-80-        });
+lib/screens/pin_screen.dart-81-        break;
+lib/screens/pin_screen.dart:82:      case PinResult.corrupt:
+lib/screens/pin_screen.dart-83-        setState(() {
+lib/screens/pin_screen.dart-84-          _busy = false;
+lib/screens/pin_screen.dart-85-          _pin = '';
+lib/screens/pin_screen.dart-86-          _message = 'Data PIN bermasalah. Pulihkan melalui kunci layar HP.';
+--
+lib/services/app_lock_service.dart-7-import 'package:local_auth/local_auth.dart';
+lib/services/app_lock_service.dart-8-import 'package:shared_preferences/shared_preferences.dart';
+lib/services/app_lock_service.dart-9-
+lib/services/app_lock_service.dart:10:enum PinResult { ok, wrong, locked, corrupt }
+lib/services/app_lock_service.dart-11-
+lib/services/app_lock_service.dart-12-class PinCheck {
+lib/services/app_lock_service.dart-13-  const PinCheck(this.result, {this.remainingAttempts = 0, this.wait});
+lib/services/app_lock_service.dart-14-
+--
+lib/services/app_lock_service.dart-135-
+lib/services/app_lock_service.dart-136-      // Data autentikasi hilang: jangan menghitungnya sebagai PIN salah.
+lib/services/app_lock_service.dart-137-      if (saltText == null || hashText == null) {
+lib/services/app_lock_service.dart:138:        return const PinCheck(PinResult.corrupt);
+lib/services/app_lock_service.dart-139-      }
+lib/services/app_lock_service.dart-140-
+lib/services/app_lock_service.dart-141-      final salt = base64Decode(saltText);
+lib/services/app_lock_service.dart-142-      final storedHash = base64Decode(hashText);
+lib/services/app_lock_service.dart-143-
+lib/services/app_lock_service.dart-144-      if (salt.length != 16 || storedHash.length != 32) {
+lib/services/app_lock_service.dart:145:        return const PinCheck(PinResult.corrupt);
+lib/services/app_lock_service.dart-146-      }
+lib/services/app_lock_service.dart-147-
+lib/services/app_lock_service.dart-148-      final actual = await _hash(pin, salt);
+lib/services/app_lock_service.dart-149-
+--
+lib/services/app_lock_service.dart-170-      );
+lib/services/app_lock_service.dart-171-    } catch (e) {
+lib/services/app_lock_service.dart-172-      debugPrint('Verifikasi PIN gagal membaca/menulis penyimpanan: $e');
+lib/services/app_lock_service.dart:173:      return const PinCheck(PinResult.corrupt);
+lib/services/app_lock_service.dart-174-    }
+lib/services/app_lock_service.dart-175-  }
+lib/services/app_lock_service.dart-176-
+lib/services/app_lock_service.dart-177-  Future<void> disable() async {
+
+===== STATUS =====
+ M .github/workflows/build-apk.yml
+ M lib/main.dart
+ M lib/screens/home_screen.dart
+ M lib/screens/settings_screen.dart
+ M lib/services/backup_status.dart
+ M lib/widgets/backup_indicator.dart
+ M pubspec.yaml
+?? add_backup_indicator.sh
+?? backup_app_lock_integrity_20261116_210514/
+?? backup_app_lock_recovery_20261116_210009/
+?? backup_app_lock_safe_20261116_205501/
+?? backup_app_lock_safe_20261116_205635/
+?? backup_app_lock_safe_20261116_205712/
+?? backup_before_revert_lightweight_20261115_133121/
+?? backup_cloud_reconnect_20261115_133235/
+?? backup_diagnostik_google_20261115_111942/
+?? backup_fix_google_import_20261115_104148/
+?? backup_google_login_20261114_185251/
+?? backup_google_restore_20261115_132224/
+?? backup_google_session_20261115_102650/
+?? backup_google_session_fix_20261115_123805/
+?? backup_google_session_fix_20261115_124655/
+?? backup_listener_google_20261115_125040/
+?? backup_sebelum_cloud_ui_20261114_225058/
+?? backup_sebelum_cloud_ui_20261114_225846/
+?? backup_sebelum_fix_sqlite_20261114_231957/
+?? backup_sebelum_google_20261114_184301/
+?? backup_sebelum_integrasi_drive_20261114_221515/
+?? backup_sebelum_pin_ffi_20261114_230953/
+?? backup_sebelum_pin_shared_preferences_20261115_124930/
+?? backup_sebelum_settings_20261114_164203/
+?? backup_sebelum_test_restore_20261114_230544/
+?? backup_sebelum_update_siklus/
+?? backup_status_google_20261114_192221/
+?? fix_diag.sh
+?? fix_google_session.sh
+?? fix_ux.sh
+?? lib/screens/lock_screen.dart
+?? lib/screens/pin_screen.dart
+?? lib/services/app_lock_service.dart
+?? lib/widgets/app_lock_gate.dart
+?? lib/widgets/app_lock_settings_card.dart
+?? lib/widgets/pin_pad.dart
+?? patch_google_session.py
+?? patchv3.py
+?? tambah_fitur.sh
+
+===== SELESAI =====
+Backup: backup_app_lock_integrity_20261116_210514
