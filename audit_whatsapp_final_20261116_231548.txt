@@ -1,0 +1,502 @@
+===== AUDIT BUILDER PESAN =====
+78:String buildReminder({
+79-  required String name,
+80-  required int balance,
+81-  DateTime? due,
+82-  required List<Txn> txns,
+83-  String shopName = '',
+84-  String header = '',
+85-  String footer = '',
+86-}) {
+87-  final b = StringBuffer();
+88-
+89-  if (header.trim().isNotEmpty) {
+90-    b.writeln(header.trim());
+91-    b.writeln('');
+92-  }
+93-  if (shopName.trim().isNotEmpty) {
+94-    b.writeln('*${shopName.trim()}*');
+95-  }
+96-
+97-  b
+98-    ..writeln('Halo $name, mohon maaf mengganggu 🙏')
+99-    ..writeln(
+100-      'Ini pengingat ramah dari warung: sisa utang Anda saat ini '
+101-      '*${rupiah(balance.abs())}*.',
+102-    );
+103-
+104-  if (due != null) b.writeln('Jatuh tempo: ${tgl(due)}.');
+105-
+106-  final recent = _newestFirst(txns);
+107-  if (recent.isNotEmpty) {
+108-    b.writeln('\nRincian siklus tagihan aktif:');
+109-    for (final t in recent) {
+110-      b.writeln('- ${_line(t)}');
+111-    }
+112-  }
+113-
+114-  final closing = footer.trim();
+115-  b.write(
+116-    '\n${closing.isNotEmpty ? closing : 'Kalau sudah ada rezekinya, ditunggu ya. Terima kasih banyak!'}',
+117-  );
+118-  return b.toString();
+119-}
+120-
+121-/// Pesan bukti pelunasan untuk satu siklus utang yang telah ditutup.
+122:String buildSettlementReceipt({
+123-  required String name,
+124-  required List<Txn> txns,
+125-  String shopName = '',
+126-  String header = '',
+127-  String footer = '',
+128-}) {
+129-  final sorted = [...txns]..sort((a, b) {
+130-    final byDate = a.date.compareTo(b.date);
+131-    return byDate != 0 ? byDate : (a.id ?? 0).compareTo(b.id ?? 0);
+132-  });
+133-
+134-  final totalDebt = sorted
+135-      .where((t) => t.type == TxnType.utang)
+136-      .fold<int>(0, (sum, t) => sum + t.amount);
+137-  final totalPaid = sorted
+138-      .where((t) => t.type == TxnType.bayar)
+139-      .fold<int>(0, (sum, t) => sum + t.amount);
+140-
+141-  final b = StringBuffer();
+142-
+143-  if (header.trim().isNotEmpty) {
+144-    b.writeln(header.trim());
+145-    b.writeln('');
+146-  }
+147-  if (shopName.trim().isNotEmpty) {
+148-    b.writeln('*${shopName.trim()}*');
+149-  }
+150-
+151-  b
+152-    ..writeln('BUKTI PELUNASAN')
+153-    ..writeln('Nama: $name')
+154-    ..writeln('Waktu: ${tglJam(DateTime.now())}')
+155-    ..writeln('Status: LUNAS')
+156-    ..writeln('Total utang: *${rupiah(totalDebt)}*')
+157-    ..writeln('Total pembayaran: *${rupiah(totalPaid)}*')
+158-    ..writeln('')
+159-    ..writeln('Rincian transaksi:');
+160-
+161-  for (final t in sorted) {
+162-    b.writeln('- ${_line(t)}');
+163-  }
+164-
+165-  b.writeln('');
+166-  b.write(
+167-    footer.trim().isNotEmpty
+168-        ? footer.trim()
+169-        : 'Terima kasih sudah menyelesaikan pembayaran 🙏',
+170-  );
+171-  return b.toString();
+172-}
+173-
+174-/// Rekap lengkap satu pelanggan sebagai teks.
+175-String buildRecap({
+176-  required String name,
+177-  required int balance,
+178-  required List<Txn> txns,
+179-}) {
+180-  final b = StringBuffer()
+181-    ..writeln('REKAP UTANG: $name')
+182-    ..writeln('Sisa utang: ${rupiah(balance)}')
+183-    ..writeln('Per tanggal: ${tgl(DateTime.now())}')
+184-    ..writeln('');
+185-  final sorted = [...txns]..sort((a, b) => a.date.compareTo(b.date));
+186-  for (final t in sorted) {
+187-    b.writeln(_line(t));
+188-  }
+189-  return b.toString().trimRight();
+190-}
+
+===== AUDIT PENGIRIMAN DETAIL =====
+53:  Future<void> _addTxn(TxnType type) async {
+54-    final c = _customer!;
+55-    final oldBalance = computeBalance(_txns);
+56-
+57-    final txn = await showTxnForm(
+58-      context,
+59-      customer: c,
+60-      type: type,
+61-      balance: oldBalance,
+62-    );
+63-    if (txn == null) return;
+64-
+65-    await AppDb.instance.insertTxn(txn);
+66-    await _load();
+67-
+68-    if (!mounted) return;
+69-
+70-    final newBalance = computeBalance(_txns);
+71-    _snack(type == TxnType.utang ? 'Utang dicatat' : 'Pembayaran dicatat');
+72-
+73-    if (type == TxnType.bayar && oldBalance > 0 && newBalance == 0) {
+74-      await _sendSettlementReceipt();
+75-    }
+76-  }
+77-
+78:  Future<void> _sendSettlementReceipt() async {
+79-    final c = _customer!;
+80-    final cycle = latestClosedDebtCycle(_txns);
+81-    if (cycle.isEmpty) return;
+82-
+83-    final send = await showDialog<bool>(
+84-      context: context,
+85-      builder: (ctx) => AlertDialog(
+86-        title: const Text('Utang sudah lunas'),
+87-        content: const Text(
+88-          'Saldo pelanggan sudah lunas. Kirim bukti pelunasan '
+89-          'beserta seluruh transaksi dalam siklus ini melalui WhatsApp?',
+90-        ),
+91-        actions: [
+92-          TextButton(
+93-            onPressed: () => Navigator.pop(ctx, false),
+94-            child: const Text('Nanti'),
+95-          ),
+96-          FilledButton(
+97-            onPressed: () => Navigator.pop(ctx, true),
+98-            child: const Text('Kirim WhatsApp'),
+99-          ),
+100-        ],
+101-      ),
+102-    );
+103-
+104-    if (send != true || !mounted) return;
+105-
+106-    final messageSettings = await ShopMessageSettings.load();
+107-    final msg = buildSettlementReceipt(
+108-      name: c.name,
+109-      txns: cycle,
+110-      shopName: messageSettings.shopName,
+111-      header: messageSettings.header,
+112-      footer: messageSettings.footer,
+113-    );
+114-    var opened = false;
+115-
+116-    try {
+117-      opened = await launchUrl(
+118-        waUri(c.phone, msg),
+119-        mode: LaunchMode.externalApplication,
+120-      );
+121-    } catch (_) {
+122-      opened = false;
+123-    }
+124-
+125-    if (!opened && mounted) {
+126-      await Clipboard.setData(ClipboardData(text: msg));
+127-      _snack('WhatsApp tidak bisa dibuka. Bukti pelunasan disalin.');
+128-    }
+129-  }
+130-
+131-  Future<void> _deleteTxn(Txn t) async {
+132-    final ok = await confirmDialog(
+133-      context,
+--
+143:  Future<void> _tagih() async {
+144-    final c = _customer!;
+145-    final balance = computeBalance(_txns);
+146-    if (balance <= 0) {
+147-      _snack('Tidak ada utang yang perlu ditagih.');
+148-      return;
+149-    }
+150-
+151-    final messageSettings = await ShopMessageSettings.load();
+152-    final cycle = activeDebtCycle(_txns);
+153-    final msg = buildReminder(
+154-      name: c.name,
+155-      balance: balance,
+156-      due: nextDueDate(cycle),
+157-      txns: cycle,
+158-      shopName: messageSettings.shopName,
+159-      header: messageSettings.header,
+160-      footer: messageSettings.footer,
+161-    );
+162-    bool ok;
+163-    try {
+164-      ok = await launchUrl(waUri(c.phone, msg),
+165-          mode: LaunchMode.externalApplication);
+166-    } catch (_) {
+167-      ok = false;
+168-    }
+169-    if (!ok && mounted) {
+170-      await Clipboard.setData(ClipboardData(text: msg));
+171-      _snack('WhatsApp tidak bisa dibuka. Pesan disalin, tempel manual ya.');
+172-    }
+173-  }
+174-
+175-  Future<void> _copyRecap() async {
+176-    final c = _customer!;
+177-    await Clipboard.setData(ClipboardData(
+178-      text: buildRecap(
+179-        name: c.name,
+180-        balance: computeBalance(_txns),
+181-        txns: _txns,
+182-      ),
+183-    ));
+184-    if (mounted) _snack('Rekap disalin');
+185-  }
+186-
+187-  Future<void> _edit() async {
+188-    final updated = await showCustomerForm(context, existing: _customer);
+189-    if (updated == null) return;
+190-    await AppDb.instance.updateCustomer(updated);
+191-    await _load();
+192-  }
+193-
+194-  Future<void> _deleteCustomer() async {
+195-    final c = _customer!;
+196-    final ok = await confirmDialog(
+197-      context,
+198-      title: 'Hapus pelanggan?',
+
+===== AUDIT PENGIRIMAN HOME =====
+42:  Future<void> _tagihCepat(CustomerSummary s) async {
+43-    final c = s.customer;
+44-    final txns = await AppDb.instance.txnsFor(c.id!);
+45-    if (!mounted) return;
+46-
+47-    final balance = computeBalance(txns);
+48-    if (balance <= 0) {
+49-      ScaffoldMessenger.of(context).showSnackBar(
+50-        const SnackBar(
+51-          content: Text('Tidak ada utang yang perlu ditagih.'),
+52-        ),
+53-      );
+54-      return;
+55-    }
+56-
+57-    final cycle = activeDebtCycle(txns);
+58-    final messageSettings = await ShopMessageSettings.load();
+59-    final msg = buildReminder(
+60-      name: c.name,
+61-      balance: balance,
+62-      due: nextDueDate(cycle),
+63-      txns: cycle,
+64-      shopName: messageSettings.shopName,
+65-      header: messageSettings.header,
+66-      footer: messageSettings.footer,
+67-    );
+68-
+69-    bool ok;
+70-    try {
+71-      ok = await launchUrl(
+72-        waUri(c.phone, msg),
+73-        mode: LaunchMode.externalApplication,
+74-      );
+75-    } catch (_) {
+76-      ok = false;
+77-    }
+78-
+79-    if (!ok && mounted) {
+80-      await Clipboard.setData(ClipboardData(text: msg));
+81-      ScaffoldMessenger.of(context).showSnackBar(
+82-        const SnackBar(
+83-          content: Text(
+84-            'WhatsApp tidak bisa dibuka. Pesan disalin, tempel manual ya.',
+85-          ),
+86-        ),
+87-      );
+88-    }
+89-  }
+90-
+
+===== PENGATURAN WARUNG =====
+lib/screens/settings_screen.dart-58-    _restoreGoogleStatus();
+lib/screens/settings_screen.dart-59-  }
+lib/screens/settings_screen.dart-60-
+lib/screens/settings_screen.dart-61-  Future<void> _loadShopSettings() async {
+lib/screens/settings_screen.dart-62-    try {
+lib/screens/settings_screen.dart:63:      final settings = await ShopMessageSettings.load();
+lib/screens/settings_screen.dart-64-      if (!mounted) return;
+lib/screens/settings_screen.dart-65-      _shopNameController.text = settings.shopName;
+lib/screens/settings_screen.dart-66-      _shopHeaderController.text = settings.header;
+lib/screens/settings_screen.dart-67-      _shopFooterController.text = settings.footer;
+lib/screens/settings_screen.dart-68-    } catch (e) {
+lib/screens/settings_screen.dart-69-      debugPrint('Gagal memuat pengaturan warung: $e');
+lib/screens/settings_screen.dart-70-    }
+lib/screens/settings_screen.dart-71-  }
+lib/screens/settings_screen.dart-72-
+lib/screens/settings_screen.dart-73-  Future<void> _saveShopSettings() async {
+lib/screens/settings_screen.dart-74-    if (_savingShop) return;
+lib/screens/settings_screen.dart-75-    setState(() => _savingShop = true);
+lib/screens/settings_screen.dart-76-    try {
+lib/screens/settings_screen.dart:77:      await ShopMessageSettings(
+lib/screens/settings_screen.dart-78-        shopName: _shopNameController.text,
+lib/screens/settings_screen.dart-79-        header: _shopHeaderController.text,
+lib/screens/settings_screen.dart-80-        footer: _shopFooterController.text,
+lib/screens/settings_screen.dart-81-      ).save();
+lib/screens/settings_screen.dart-82-
+lib/screens/settings_screen.dart-83-      if (!mounted) return;
+lib/screens/settings_screen.dart-84-      ScaffoldMessenger.of(context).showSnackBar(
+lib/screens/settings_screen.dart-85-        const SnackBar(content: Text('Pengaturan warung berhasil disimpan.')),
+lib/screens/settings_screen.dart-86-      );
+lib/screens/settings_screen.dart-87-    } catch (e) {
+lib/screens/settings_screen.dart-88-      if (!mounted) return;
+lib/screens/settings_screen.dart-89-      ScaffoldMessenger.of(context).showSnackBar(
+lib/screens/settings_screen.dart-90-        SnackBar(content: Text('Gagal menyimpan pengaturan: $e')),
+lib/screens/settings_screen.dart-91-      );
+lib/screens/settings_screen.dart-92-    } finally {
+lib/screens/settings_screen.dart-93-      if (mounted) setState(() => _savingShop = false);
+lib/screens/settings_screen.dart-94-    }
+lib/screens/settings_screen.dart-95-  }
+lib/screens/settings_screen.dart-96-
+lib/screens/settings_screen.dart-97-  @override
+lib/screens/settings_screen.dart-98-  void dispose() {
+lib/screens/settings_screen.dart-99-    _googleAccountSubscription?.cancel();
+lib/screens/settings_screen.dart-100-    _shopNameController.dispose();
+lib/screens/settings_screen.dart-101-    _shopHeaderController.dispose();
+lib/screens/settings_screen.dart-102-    _shopFooterController.dispose();
+lib/screens/settings_screen.dart-103-    super.dispose();
+lib/screens/settings_screen.dart-104-  }
+lib/screens/settings_screen.dart-105-
+lib/screens/settings_screen.dart-106-  Future<void> _restoreGoogleStatus() async {
+lib/screens/settings_screen.dart-107-    try {
+lib/screens/settings_screen.dart-108-      final google = GoogleDriveService.instance;
+lib/screens/settings_screen.dart-109-      final account = await google.restoreAccount();
+lib/screens/settings_screen.dart-110-      final savedEmail = await google.loadSavedAccountEmail();
+lib/screens/settings_screen.dart-111-
+lib/screens/settings_screen.dart-112-      if (!mounted) return;
+--
+lib/screens/settings_screen.dart-553-                    ),
+lib/screens/settings_screen.dart-554-                  ),
+lib/screens/settings_screen.dart-555-                  TextField(
+lib/screens/settings_screen.dart-556-                    controller: _shopNameController,
+lib/screens/settings_screen.dart-557-                    decoration: const InputDecoration(
+lib/screens/settings_screen.dart:558:                      labelText: 'Nama warung',
+lib/screens/settings_screen.dart-559-                      hintText: 'Contoh: Warung Berkah',
+lib/screens/settings_screen.dart-560-                    ),
+lib/screens/settings_screen.dart-561-                    textCapitalization: TextCapitalization.words,
+lib/screens/settings_screen.dart-562-                  ),
+lib/screens/settings_screen.dart-563-                  const SizedBox(height: 12),
+lib/screens/settings_screen.dart-564-                  TextField(
+lib/screens/settings_screen.dart-565-                    controller: _shopHeaderController,
+lib/screens/settings_screen.dart-566-                    decoration: const InputDecoration(
+lib/screens/settings_screen.dart-567-                      labelText: 'Header / pembuka pesan',
+lib/screens/settings_screen.dart-568-                      hintText: 'Teks pembuka (opsional)',
+lib/screens/settings_screen.dart-569-                    ),
+lib/screens/settings_screen.dart-570-                    minLines: 1,
+lib/screens/settings_screen.dart-571-                    maxLines: 3,
+lib/screens/settings_screen.dart-572-                  ),
+lib/screens/settings_screen.dart-573-                  const SizedBox(height: 12),
+lib/screens/settings_screen.dart-574-                  TextField(
+lib/screens/settings_screen.dart-575-                    controller: _shopFooterController,
+lib/screens/settings_screen.dart-576-                    decoration: const InputDecoration(
+lib/screens/settings_screen.dart-577-                      labelText: 'Footer / penutup pesan',
+lib/screens/settings_screen.dart-578-                      hintText: 'Teks penutup (opsional)',
+lib/screens/settings_screen.dart-579-                    ),
+lib/screens/settings_screen.dart-580-                    minLines: 1,
+lib/screens/settings_screen.dart-581-                    maxLines: 3,
+lib/screens/settings_screen.dart-582-                  ),
+lib/screens/settings_screen.dart-583-                  const SizedBox(height: 16),
+lib/screens/settings_screen.dart-584-                  SizedBox(
+lib/screens/settings_screen.dart-585-                    width: double.infinity,
+lib/screens/settings_screen.dart-586-                    child: FilledButton.icon(
+lib/screens/settings_screen.dart-587-                      onPressed: _savingShop ? null : _saveShopSettings,
+lib/screens/settings_screen.dart-588-                      icon: const Icon(Icons.save_outlined),
+lib/screens/settings_screen.dart-589-                      label: Text(
+lib/screens/settings_screen.dart-590-                        _savingShop ? 'Menyimpan...' : 'Simpan pengaturan warung',
+lib/screens/settings_screen.dart-591-                      ),
+lib/screens/settings_screen.dart-592-                    ),
+lib/screens/settings_screen.dart-593-                  ),
+--
+lib/services/shop_message_settings.dart-1-import 'package:shared_preferences/shared_preferences.dart';
+lib/services/shop_message_settings.dart-2-
+lib/services/shop_message_settings.dart:3:class ShopMessageSettings {
+lib/services/shop_message_settings.dart:4:  const ShopMessageSettings({
+lib/services/shop_message_settings.dart-5-    this.shopName = '',
+lib/services/shop_message_settings.dart-6-    this.header = '',
+lib/services/shop_message_settings.dart-7-    this.footer = '',
+lib/services/shop_message_settings.dart-8-  });
+lib/services/shop_message_settings.dart-9-
+lib/services/shop_message_settings.dart-10-  final String shopName;
+lib/services/shop_message_settings.dart-11-  final String header;
+lib/services/shop_message_settings.dart-12-  final String footer;
+lib/services/shop_message_settings.dart-13-
+lib/services/shop_message_settings.dart-14-  static const _nameKey = 'shop_message_name';
+lib/services/shop_message_settings.dart-15-  static const _headerKey = 'shop_message_header';
+lib/services/shop_message_settings.dart-16-  static const _footerKey = 'shop_message_footer';
+lib/services/shop_message_settings.dart-17-
+lib/services/shop_message_settings.dart:18:  static Future<ShopMessageSettings> load() async {
+lib/services/shop_message_settings.dart-19-    final prefs = SharedPreferencesAsync();
+lib/services/shop_message_settings.dart:20:    return ShopMessageSettings(
+lib/services/shop_message_settings.dart-21-      shopName: await prefs.getString(_nameKey) ?? '',
+lib/services/shop_message_settings.dart-22-      header: await prefs.getString(_headerKey) ?? '',
+lib/services/shop_message_settings.dart-23-      footer: await prefs.getString(_footerKey) ?? '',
+lib/services/shop_message_settings.dart-24-    );
+lib/services/shop_message_settings.dart-25-  }
+lib/services/shop_message_settings.dart-26-
+lib/services/shop_message_settings.dart-27-  Future<void> save() async {
+lib/services/shop_message_settings.dart-28-    final prefs = SharedPreferencesAsync();
+lib/services/shop_message_settings.dart-29-    await prefs.setString(_nameKey, shopName.trim());
+lib/services/shop_message_settings.dart-30-    await prefs.setString(_headerKey, header.trim());
+lib/services/shop_message_settings.dart-31-    await prefs.setString(_footerKey, footer.trim());
+lib/services/shop_message_settings.dart-32-  }
+lib/services/shop_message_settings.dart-33-}
+
+===== PEMANGGIL BUILDER =====
+lib/utils.dart:78:String buildReminder({
+lib/utils.dart:122:String buildSettlementReceipt({
+lib/screens/customer_screen.dart:107:    final msg = buildSettlementReceipt(
+lib/screens/customer_screen.dart:153:    final msg = buildReminder(
+lib/screens/home_screen.dart:59:    final msg = buildReminder(
+
+===== DIFF CHECK =====
+
+===== STATUS =====
+ M lib/models.dart
+ M lib/screens/customer_screen.dart
+ M lib/screens/home_screen.dart
+ M lib/screens/settings_screen.dart
+ M lib/services/backup_status.dart
+ M lib/status_style.dart
+ M lib/utils.dart
+ M lib/widgets/backup_indicator.dart
+?? add_backup_indicator.sh
+?? backup_app_lock_integrity_20261116_210514/
+?? backup_app_lock_recovery_20261116_210009/
+?? backup_app_lock_safe_20261116_205501/
+?? backup_app_lock_safe_20261116_205635/
+?? backup_app_lock_safe_20261116_205712/
+?? backup_app_lock_storage_20261116_211528/
+?? backup_before_revert_lightweight_20261115_133121/
+?? backup_cloud_reconnect_20261115_133235/
+?? backup_diagnostik_google_20261115_111942/
+?? backup_fix_google_import_20261115_104148/
+?? backup_google_login_20261114_185251/
+?? backup_google_restore_20261115_132224/
+?? backup_google_session_20261115_102650/
+?? backup_google_session_fix_20261115_123805/
+?? backup_google_session_fix_20261115_124655/
+?? backup_guard_whatsapp_20261116_230413/
+?? backup_guard_whatsapp_20261116_230532/
+?? backup_guard_whatsapp_v2_20261116_230720/
+?? backup_listener_google_20261115_125040/
+?? backup_pengaturan_warung_20261116_222928/
+?? backup_remove_app_lock_20261116_213512/
+?? backup_remove_app_lock_20261116_213908/
+?? backup_saldo_piutang_20261116_221958/
+?? backup_sebelum_cloud_ui_20261114_225058/
+?? backup_sebelum_cloud_ui_20261114_225846/
+?? backup_sebelum_fix_sqlite_20261114_231957/
+?? backup_sebelum_google_20261114_184301/
+?? backup_sebelum_integrasi_drive_20261114_221515/
+?? backup_sebelum_pin_ffi_20261114_230953/
+?? backup_sebelum_pin_shared_preferences_20261115_124930/
+?? backup_sebelum_settings_20261114_164203/
+?? backup_sebelum_test_restore_20261114_230544/
+?? backup_sebelum_update_siklus/
+?? backup_sebelum_whatsapp_gambar_20261116_221203/
+?? backup_settings_warung_ui_20261116_223241/
+?? backup_status_google_20261114_192221/
+?? backup_whatsapp_newline_20261116_225847/
+?? fix_diag.sh
+?? fix_google_session.sh
+?? fix_ux.sh
+?? lib/services/shop_message_settings.dart
+?? patch_google_session.py
+?? patchv3.py
+?? tambah_fitur.sh
