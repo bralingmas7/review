@@ -1,0 +1,751 @@
+===== CUSTOMER SCREEN LENGKAP =====
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
+
+import '../db.dart';
+import '../dialogs.dart';
+import '../models.dart';
+import '../status_style.dart';
+import '../utils.dart';
+import '../services/shop_message_settings.dart';
+
+class CustomerScreen extends StatefulWidget {
+  final int customerId;
+  const CustomerScreen({super.key, required this.customerId});
+
+  @override
+  State<CustomerScreen> createState() => _CustomerScreenState();
+}
+
+class _CustomerScreenState extends State<CustomerScreen> {
+  Customer? _customer;
+  List<Txn> _txns = [];
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final db = AppDb.instance;
+    final c = await db.customer(widget.customerId);
+    final t = await db.txnsFor(widget.customerId);
+    if (!mounted) return;
+    if (c == null) {
+      Navigator.pop(context);
+      return;
+    }
+    setState(() {
+      _customer = c;
+      _txns = t;
+      _loading = false;
+    });
+  }
+
+  void _snack(String msg) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(msg)));
+  }
+
+  Future<void> _addTxn(TxnType type) async {
+    final c = _customer!;
+    final oldBalance = computeBalance(_txns);
+
+    final txn = await showTxnForm(
+      context,
+      customer: c,
+      type: type,
+      balance: oldBalance,
+    );
+    if (txn == null) return;
+
+    await AppDb.instance.insertTxn(txn);
+    await _load();
+
+    if (!mounted) return;
+
+    final newBalance = computeBalance(_txns);
+    _snack(type == TxnType.utang ? 'Utang dicatat' : 'Pembayaran dicatat');
+
+    if (type == TxnType.bayar && oldBalance > 0 && newBalance == 0) {
+      await _sendSettlementReceipt();
+    }
+  }
+
+  Future<void> _sendSettlementReceipt() async {
+    final c = _customer!;
+    final cycle = latestClosedDebtCycle(_txns);
+    if (cycle.isEmpty) return;
+
+    final send = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Utang sudah lunas'),
+        content: const Text(
+          'Saldo pelanggan sudah lunas. Kirim bukti pelunasan '
+          'beserta seluruh transaksi dalam siklus ini melalui WhatsApp?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Nanti'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Kirim WhatsApp'),
+          ),
+        ],
+      ),
+    );
+
+    if (send != true || !mounted) return;
+
+    final messageSettings = await ShopMessageSettings.load();
+    final msg = buildSettlementReceipt(
+      name: c.name,
+      txns: cycle,
+      shopName: messageSettings.shopName,
+      header: messageSettings.header,
+      footer: messageSettings.footer,
+    );
+    var opened = false;
+
+    try {
+      opened = await launchUrl(
+        waUri(c.phone, msg),
+        mode: LaunchMode.externalApplication,
+      );
+    } catch (_) {
+      opened = false;
+    }
+
+    if (!opened && mounted) {
+      await Clipboard.setData(ClipboardData(text: msg));
+      _snack('WhatsApp tidak bisa dibuka. Bukti pelunasan disalin.');
+    }
+  }
+
+  Future<void> _deleteTxn(Txn t) async {
+    final ok = await confirmDialog(
+      context,
+      title: 'Hapus catatan?',
+      message: '${t.type == TxnType.utang ? 'Utang' : 'Pembayaran'} '
+          '${rupiah(t.amount)} tanggal ${tglJam(t.date)} akan dihapus.',
+    );
+    if (!ok) return;
+    await AppDb.instance.deleteTxn(t.id!);
+    await _load();
+  }
+
+  Future<void> _tagih() async {
+    final c = _customer!;
+    final balance = computeBalance(_txns);
+    if (balance <= 0) {
+      _snack('Tidak ada utang yang perlu ditagih.');
+      return;
+    }
+
+    final messageSettings = await ShopMessageSettings.load();
+    final cycle = activeDebtCycle(_txns);
+    final msg = buildReminder(
+      name: c.name,
+      balance: balance,
+      due: nextDueDate(cycle),
+      txns: cycle,
+      shopName: messageSettings.shopName,
+      header: messageSettings.header,
+      footer: messageSettings.footer,
+    );
+    bool ok;
+    try {
+      ok = await launchUrl(waUri(c.phone, msg),
+          mode: LaunchMode.externalApplication);
+    } catch (_) {
+      ok = false;
+    }
+    if (!ok && mounted) {
+      await Clipboard.setData(ClipboardData(text: msg));
+      _snack('WhatsApp tidak bisa dibuka. Pesan disalin, tempel manual ya.');
+    }
+  }
+
+  Future<void> _copyRecap() async {
+    final c = _customer!;
+    await Clipboard.setData(ClipboardData(
+      text: buildRecap(
+        name: c.name,
+        balance: computeBalance(_txns),
+        txns: _txns,
+      ),
+    ));
+    if (mounted) _snack('Rekap disalin');
+  }
+
+  Future<void> _edit() async {
+    final updated = await showCustomerForm(context, existing: _customer);
+    if (updated == null) return;
+    await AppDb.instance.updateCustomer(updated);
+    await _load();
+  }
+
+  Future<void> _deleteCustomer() async {
+    final c = _customer!;
+    final ok = await confirmDialog(
+      context,
+      title: 'Hapus pelanggan?',
+      message:
+          '${c.name} beserta semua catatan utangnya akan dihapus permanen.',
+    );
+    if (!ok) return;
+    await AppDb.instance.deleteCustomer(c.id!);
+    if (mounted) Navigator.pop(context);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_loading || _customer == null) {
+      return Scaffold(
+        appBar: AppBar(),
+        body: const Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    final c = _customer!;
+    final summary = CustomerSummary(
+      customer: c,
+      balance: computeBalance(_txns),
+      nextDue: nextDueDate(_txns),
+    );
+    final history = [..._txns]..sort((a, b) {
+        final byDate = b.date.compareTo(a.date);
+        return byDate != 0 ? byDate : (b.id ?? 0).compareTo(a.id ?? 0);
+      });
+
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(c.name),
+        actions: [
+          PopupMenuButton<String>(
+            onSelected: (v) {
+              switch (v) {
+                case 'edit':
+                  _edit();
+                case 'recap':
+                  _copyRecap();
+                case 'delete':
+                  _deleteCustomer();
+              }
+            },
+            itemBuilder: (_) => const [
+              PopupMenuItem(value: 'edit', child: Text('Ubah data')),
+              PopupMenuItem(value: 'recap', child: Text('Salin rekap')),
+              PopupMenuItem(value: 'delete', child: Text('Hapus pelanggan')),
+            ],
+          ),
+        ],
+      ),
+      body: ListView.builder(
+        padding: const EdgeInsets.only(bottom: 32),
+        itemCount: history.length + 1,
+        itemBuilder: (_, i) {
+          if (i == 0) return _Header(summary: summary, onAdd: _addTxn, onTagih: _tagih);
+          final t = history[i - 1];
+          return _TxnTile(txn: t, onLongPress: () => _deleteTxn(t));
+        },
+      ),
+    );
+  }
+}
+
+class _Header extends StatelessWidget {
+  final CustomerSummary summary;
+  final Future<void> Function(TxnType) onAdd;
+  final VoidCallback onTagih;
+  const _Header({
+    required this.summary,
+    required this.onAdd,
+    required this.onTagih,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final c = summary.customer;
+    final status = summary.status();
+    final color = statusColor(status);
+    final theme = Theme.of(context);
+
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    status == DebtStatus.piutang
+                        ? 'Piutang pelanggan'
+                        : 'Sisa utang',
+                    style: theme.textTheme.labelLarge,
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    rupiah(summary.balance.abs()),
+                    style: theme.textTheme.headlineMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      color: status == DebtStatus.lunas ? null : color,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(statusText(summary),
+                      style: TextStyle(
+                          color: color, fontWeight: FontWeight.w600)),
+                  if (c.creditLimit > 0) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      'Batas utang ${rupiah(c.creditLimit)}'
+                      '${summary.overLimit ? ' (terlewati)' : ''}',
+                      style: TextStyle(
+                        color: summary.overLimit ? kMerah : null,
+                        fontWeight:
+                            summary.overLimit ? FontWeight.w600 : null,
+                      ),
+                    ),
+                  ],
+                  if (c.phone.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Text('WhatsApp: ${c.phone}'),
+                  ],
+                  if (c.note.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Text(c.note, style: theme.textTheme.bodySmall),
+                  ],
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: FilledButton.icon(
+                  onPressed: () => onAdd(TxnType.utang),
+                  icon: const Icon(Icons.add),
+                  label: const Text('Utang baru'),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: FilledButton.tonalIcon(
+                  onPressed: summary.balance > 0
+                      ? () => onAdd(TxnType.bayar)
+                      : null,
+                  icon: const Icon(Icons.payments_outlined),
+                  label: const Text('Bayar'),
+                ),
+              ),
+            ],
+          ),
+          if (summary.balance > 0) ...[
+            const SizedBox(height: 8),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: onTagih,
+                icon: const Icon(Icons.chat_outlined),
+                label: const Text('Tagih lewat WhatsApp'),
+              ),
+            ),
+          ],
+          const SizedBox(height: 20),
+          Text('Riwayat', style: theme.textTheme.titleMedium),
+          Text('Tahan lama pada catatan untuk menghapus.',
+              style: theme.textTheme.bodySmall),
+        ],
+      ),
+    );
+  }
+}
+
+class _TxnTile extends StatelessWidget {
+  final Txn txn;
+  final VoidCallback onLongPress;
+  const _TxnTile({required this.txn, required this.onLongPress});
+
+  @override
+  Widget build(BuildContext context) {
+    final isDebt = txn.type == TxnType.utang;
+    final color = isDebt ? kMerah : kHijau;
+    final subtitle = [
+      tglJam(txn.date),
+      if (isDebt && txn.dueDate != null) 'tempo ${tgl(txn.dueDate!)}',
+    ].join(' • ');
+
+    return ListTile(
+      onLongPress: onLongPress,
+      leading: CircleAvatar(
+        backgroundColor: color.withAlpha(35),
+        foregroundColor: color,
+        child: Icon(isDebt ? Icons.arrow_upward : Icons.arrow_downward),
+      ),
+      title: Text(txn.note.isEmpty
+          ? (isDebt ? 'Utang' : 'Pembayaran')
+          : txn.note),
+      subtitle: Text(subtitle),
+      trailing: Text(
+        '${isDebt ? '+' : '-'}${rupiah(txn.amount)}',
+        style: TextStyle(
+            color: color, fontWeight: FontWeight.bold, fontSize: 15),
+      ),
+    );
+  }
+}
+
+===== MAIN DART =====
+import 'package:flutter/material.dart';
+
+import 'screens/home_screen.dart';
+
+void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+  runApp(const BukuUtangApp());
+}
+
+class BukuUtangApp extends StatelessWidget {
+  const BukuUtangApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'Buku Utang Warung',
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(
+        useMaterial3: true,
+        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF2E7D32)),
+        visualDensity: VisualDensity.standard,
+      ),
+      home: const HomeScreen(),
+    );
+  }
+}
+
+===== MODEL TRANSAKSI =====
+enum TxnType { utang, bayar }
+
+enum DebtStatus { piutang, lunas, lancar, mendekati, telat }
+
+DateTime dateOnly(DateTime d) => DateTime(d.year, d.month, d.day);
+
+class Customer {
+  final int? id;
+  final String name;
+  final String phone;
+  final String note;
+
+  /// Batas utang dalam rupiah. 0 berarti tanpa batas.
+  final int creditLimit;
+  final DateTime createdAt;
+
+  const Customer({
+    this.id,
+    required this.name,
+    this.phone = '',
+    this.note = '',
+    this.creditLimit = 0,
+    required this.createdAt,
+  });
+
+  Customer copyWith({
+    int? id,
+    String? name,
+    String? phone,
+    String? note,
+    int? creditLimit,
+  }) {
+    return Customer(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      phone: phone ?? this.phone,
+      note: note ?? this.note,
+      creditLimit: creditLimit ?? this.creditLimit,
+      createdAt: createdAt,
+    );
+  }
+
+  Map<String, Object?> toMap() => {
+        if (id != null) 'id': id,
+        'name': name,
+        'phone': phone,
+        'note': note,
+        'credit_limit': creditLimit,
+        'created_at': createdAt.millisecondsSinceEpoch,
+      };
+
+  factory Customer.fromMap(Map<String, Object?> m) => Customer(
+        id: m['id'] as int?,
+        name: m['name'] as String,
+        phone: (m['phone'] as String?) ?? '',
+        note: (m['note'] as String?) ?? '',
+        creditLimit: (m['credit_limit'] as int?) ?? 0,
+        createdAt: DateTime.fromMillisecondsSinceEpoch(m['created_at'] as int),
+      );
+}
+
+class Txn {
+  final int? id;
+  final int customerId;
+  final TxnType type;
+  final int amount;
+  final String note;
+  final DateTime date;
+  final DateTime? dueDate;
+
+  const Txn({
+    this.id,
+    required this.customerId,
+    required this.type,
+    required this.amount,
+    this.note = '',
+    required this.date,
+    this.dueDate,
+  });
+
+  Map<String, Object?> toMap() => {
+        if (id != null) 'id': id,
+        'customer_id': customerId,
+        'type': type.name,
+        'amount': amount,
+        'note': note,
+        'date': date.millisecondsSinceEpoch,
+        'due_date': dueDate?.millisecondsSinceEpoch,
+      };
+
+  factory Txn.fromMap(Map<String, Object?> m) => Txn(
+        id: m['id'] as int?,
+        customerId: m['customer_id'] as int,
+        type: TxnType.values.byName(m['type'] as String),
+        amount: m['amount'] as int,
+        note: (m['note'] as String?) ?? '',
+        date: DateTime.fromMillisecondsSinceEpoch(m['date'] as int),
+        dueDate: m['due_date'] == null
+            ? null
+            : DateTime.fromMillisecondsSinceEpoch(m['due_date'] as int),
+      );
+}
+
+/// Sisa utang = total utang dikurangi total pembayaran.
+int computeBalance(List<Txn> txns) => txns.fold<int>(
+      0,
+      (sum, t) => sum + (t.type == TxnType.utang ? t.amount : -t.amount),
+    );
+
+/// Jatuh tempo terdekat dari utang yang belum tertutup.
+/// Pembayaran dialokasikan ke utang paling lama lebih dulu (FIFO).
+DateTime? nextDueDate(List<Txn> txns) {
+  final ordered = [...txns]..sort((a, b) {
+    final byDate = a.date.compareTo(b.date);
+    return byDate != 0 ? byDate : (a.id ?? 0).compareTo(b.id ?? 0);
+  });
+
+  // Pembayaran dialokasikan secara kronologis ke utang tertua (FIFO).
+  // Kelebihan pembayaran menjadi kredit untuk utang berikutnya.
+  final outstanding = <MapEntry<Txn, int>>[];
+  var credit = 0;
+
+  for (final t in ordered) {
+    if (t.type == TxnType.utang) {
+      final remaining = t.amount - credit;
+      credit = remaining < 0 ? -remaining : 0;
+      if (remaining > 0) {
+        outstanding.add(MapEntry(t, remaining));
+      }
+    } else {
+      var payment = t.amount;
+      while (payment > 0 && outstanding.isNotEmpty) {
+        final first = outstanding.removeAt(0);
+        final left = first.value - payment;
+        if (left > 0) {
+          outstanding.insert(0, MapEntry(first.key, left));
+          payment = 0;
+        } else {
+          payment = -left;
+        }
+      }
+      credit += payment;
+    }
+  }
+
+  DateTime? earliest;
+  for (final item in outstanding) {
+    final due = item.key.dueDate;
+    if (due != null && (earliest == null || due.isBefore(earliest))) {
+      earliest = due;
+    }
+  }
+  return earliest;
+}
+
+class CustomerSummary {
+  final Customer customer;
+  final int balance;
+  final DateTime? nextDue;
+  final DateTime? lastActivity;
+
+  const CustomerSummary({
+    required this.customer,
+    required this.balance,
+    this.nextDue,
+    this.lastActivity,
+  });
+
+  DebtStatus status([DateTime? now]) {
+    if (balance < 0) return DebtStatus.piutang;
+    if (balance == 0) return DebtStatus.lunas;
+    final due = nextDue;
+    if (due == null) return DebtStatus.lancar;
+    final today = dateOnly(now ?? DateTime.now());
+    final dueDay = dateOnly(due);
+    if (dueDay.isBefore(today)) return DebtStatus.telat;
+    if (dueDay.difference(today).inDays <= 3) return DebtStatus.mendekati;
+    return DebtStatus.lancar;
+  }
+
+  bool get overLimit =>
+      customer.creditLimit > 0 && balance > customer.creditLimit;
+}
+
+List<CustomerSummary> buildSummaries(
+  List<Customer> customers,
+  List<Txn> txns,
+) {
+  final byCustomer = <int, List<Txn>>{};
+  for (final t in txns) {
+    byCustomer.putIfAbsent(t.customerId, () => <Txn>[]).add(t);
+  }
+  return customers.map((c) {
+    final list = byCustomer[c.id] ?? <Txn>[];
+    return CustomerSummary(
+      customer: c,
+      balance: computeBalance(list),
+      nextDue: nextDueDate(list),
+      lastActivity: list.isEmpty
+          ? null
+          : list.map((t) => t.date).reduce((a, b) => a.isAfter(b) ? a : b),
+    );
+  }).toList();
+}
+
+
+/// Mengurutkan transaksi berdasarkan waktu, lalu ID untuk waktu yang sama.
+List<Txn> _orderedTxns(List<Txn> txns) {
+  return [...txns]..sort((a, b) {
+    final byDate = a.date.compareTo(b.date);
+    return byDate != 0 ? byDate : (a.id ?? 0).compareTo(b.id ?? 0);
+  });
+}
+
+/// Transaksi pada siklus utang yang masih aktif.
+List<Txn> activeDebtCycle(List<Txn> txns) {
+  final cycle = <Txn>[];
+  var balance = 0;
+
+  for (final t in _orderedTxns(txns)) {
+    cycle.add(t);
+    balance += t.type == TxnType.utang ? t.amount : -t.amount;
+
+    if (balance == 0) {
+      cycle.clear();
+    }
+  }
+
+  return cycle;
+}
+
+/// Transaksi pada siklus terakhir yang sudah lunas.
+List<Txn> latestClosedDebtCycle(List<Txn> txns) {
+  final cycle = <Txn>[];
+  List<Txn> latestClosed = [];
+  var balance = 0;
+
+  for (final t in _orderedTxns(txns)) {
+    cycle.add(t);
+    balance += t.type == TxnType.utang ? t.amount : -t.amount;
+
+    if (balance == 0) {
+      if (cycle.any((item) => item.type == TxnType.utang)) {
+        latestClosed = List<Txn>.from(cycle);
+      }
+      cycle.clear();
+    }
+  }
+
+  return latestClosed;
+}
+
+===== STATUS PERUBAHAN =====
+ M .github/workflows/build-apk.yml
+ M lib/models.dart
+ M lib/screens/customer_screen.dart
+ M lib/screens/home_screen.dart
+ M lib/screens/settings_screen.dart
+ M lib/services/backup_status.dart
+ M lib/services/google_drive_service.dart
+ M lib/status_style.dart
+ M lib/utils.dart
+ M lib/widgets/backup_indicator.dart
+ M pubspec.yaml
+?? add_backup_indicator.sh
+?? backup_app_lock_integrity_20261116_210514/
+?? backup_app_lock_recovery_20261116_210009/
+?? backup_app_lock_safe_20261116_205501/
+?? backup_app_lock_safe_20261116_205635/
+?? backup_app_lock_safe_20261116_205712/
+?? backup_app_lock_storage_20261116_211528/
+?? backup_auto_backup_dependencies_20261116_234527/
+?? backup_backup_status_race_20261116_231910/
+?? backup_before_revert_lightweight_20261115_133121/
+?? backup_cloud_reconnect_20261115_133235/
+?? backup_diagnostik_google_20261115_111942/
+?? backup_fix_google_import_20261115_104148/
+?? backup_google_lightweight_restore_20261116_233447/
+?? backup_google_login_20261114_185251/
+?? backup_google_restore_20261115_132224/
+?? backup_google_session_20261115_102650/
+?? backup_google_session_fix_20261115_123805/
+?? backup_google_session_fix_20261115_124655/
+?? backup_guard_whatsapp_20261116_230413/
+?? backup_guard_whatsapp_20261116_230532/
+?? backup_guard_whatsapp_v2_20261116_230720/
+?? backup_listener_google_20261115_125040/
+?? backup_pengaturan_warung_20261116_222928/
+?? backup_remove_app_lock_20261116_213512/
+?? backup_remove_app_lock_20261116_213908/
+?? backup_saldo_piutang_20261116_221958/
+?? backup_sebelum_cloud_ui_20261114_225058/
+?? backup_sebelum_cloud_ui_20261114_225846/
+?? backup_sebelum_fix_sqlite_20261114_231957/
+?? backup_sebelum_google_20261114_184301/
+?? backup_sebelum_integrasi_drive_20261114_221515/
+?? backup_sebelum_pin_ffi_20261114_230953/
+?? backup_sebelum_pin_shared_preferences_20261115_124930/
+?? backup_sebelum_settings_20261114_164203/
+?? backup_sebelum_test_restore_20261114_230544/
+?? backup_sebelum_update_siklus/
+?? backup_sebelum_whatsapp_gambar_20261116_221203/
+?? backup_settings_warung_ui_20261116_223241/
+?? backup_status_google_20261114_192221/
+?? backup_whatsapp_newline_20261116_225847/
+?? fix_diag.sh
+?? fix_google_session.sh
+?? fix_ux.sh
+?? lib/services/shop_message_settings.dart
+?? patch_google_session.py
+?? patchv3.py
+?? tambah_fitur.sh
