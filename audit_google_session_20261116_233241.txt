@@ -1,0 +1,1374 @@
+===== GOOGLE SESSION AUDIT =====
+Mon Nov 16 23:32:41 WIB 2026
+
+===== GIT STATUS =====
+ M lib/models.dart
+ M lib/screens/customer_screen.dart
+ M lib/screens/home_screen.dart
+ M lib/screens/settings_screen.dart
+ M lib/services/backup_status.dart
+ M lib/status_style.dart
+ M lib/utils.dart
+ M lib/widgets/backup_indicator.dart
+?? add_backup_indicator.sh
+?? backup_app_lock_integrity_20261116_210514/
+?? backup_app_lock_recovery_20261116_210009/
+?? backup_app_lock_safe_20261116_205501/
+?? backup_app_lock_safe_20261116_205635/
+?? backup_app_lock_safe_20261116_205712/
+?? backup_app_lock_storage_20261116_211528/
+?? backup_backup_status_race_20261116_231910/
+?? backup_before_revert_lightweight_20261115_133121/
+?? backup_cloud_reconnect_20261115_133235/
+?? backup_diagnostik_google_20261115_111942/
+?? backup_fix_google_import_20261115_104148/
+?? backup_google_login_20261114_185251/
+?? backup_google_restore_20261115_132224/
+?? backup_google_session_20261115_102650/
+?? backup_google_session_fix_20261115_123805/
+?? backup_google_session_fix_20261115_124655/
+?? backup_guard_whatsapp_20261116_230413/
+?? backup_guard_whatsapp_20261116_230532/
+?? backup_guard_whatsapp_v2_20261116_230720/
+?? backup_listener_google_20261115_125040/
+?? backup_pengaturan_warung_20261116_222928/
+?? backup_remove_app_lock_20261116_213512/
+?? backup_remove_app_lock_20261116_213908/
+?? backup_saldo_piutang_20261116_221958/
+?? backup_sebelum_cloud_ui_20261114_225058/
+?? backup_sebelum_cloud_ui_20261114_225846/
+?? backup_sebelum_fix_sqlite_20261114_231957/
+?? backup_sebelum_google_20261114_184301/
+?? backup_sebelum_integrasi_drive_20261114_221515/
+?? backup_sebelum_pin_ffi_20261114_230953/
+?? backup_sebelum_pin_shared_preferences_20261115_124930/
+?? backup_sebelum_settings_20261114_164203/
+?? backup_sebelum_test_restore_20261114_230544/
+?? backup_sebelum_update_siklus/
+?? backup_sebelum_whatsapp_gambar_20261116_221203/
+?? backup_settings_warung_ui_20261116_223241/
+?? backup_status_google_20261114_192221/
+?? backup_whatsapp_newline_20261116_225847/
+?? fix_diag.sh
+?? fix_google_session.sh
+?? fix_ux.sh
+?? lib/services/shop_message_settings.dart
+?? patch_google_session.py
+?? patchv3.py
+?? tambah_fitur.sh
+
+===== PUBSPEC =====
+name: buku_utang_warung
+description: Buku utang pelanggan untuk pemilik warung. Offline, cepat, dan bisa tagih lewat WhatsApp.
+publish_to: "none"
+version: 0.1.0+1
+
+environment:
+  sdk: ">=3.3.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  sqflite: ^2.3.3
+  path: ^1.9.0
+  url_launcher: ^6.3.0
+  file_picker: ^12.3.0
+
+  google_sign_in: ^7.2.0
+  googleapis: ^19.0.0
+  extension_google_sign_in_as_googleapis_auth: ^3.0.0
+  cryptography: ^2.7.0
+  shared_preferences: 2.3.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  sqflite_common_ffi: 2.3.3
+  sqlite3: 2.4.0
+
+flutter:
+  uses-material-design: true
+
+===== GOOGLE SIGN-IN REFERENCES =====
+lib/screens/settings_screen.dart:31:  StreamSubscription<GoogleSignInAccount?>? _googleAccountSubscription;
+lib/screens/settings_screen.dart:174:      await GoogleDriveService.instance.signOut();
+lib/services/google_drive_service.dart:28:  final GoogleSignIn _google = GoogleSignIn.instance;
+lib/services/google_drive_service.dart:32:  GoogleSignInAccount? _account;
+lib/services/google_drive_service.dart:33:  StreamSubscription<GoogleSignInAuthenticationEvent>? _authSubscription;
+lib/services/google_drive_service.dart:35:  final StreamController<GoogleSignInAccount?> _accountChanges =
+lib/services/google_drive_service.dart:36:      StreamController<GoogleSignInAccount?>.broadcast();
+lib/services/google_drive_service.dart:38:  GoogleSignInAccount? get account => _account;
+lib/services/google_drive_service.dart:39:  Stream<GoogleSignInAccount?> get accountChanges =>
+lib/services/google_drive_service.dart:42:  void _setAccount(GoogleSignInAccount? account) {
+lib/services/google_drive_service.dart:54:    _authSubscription ??= _google.authenticationEvents.listen(
+lib/services/google_drive_service.dart:56:        if (event is GoogleSignInAuthenticationEventSignIn) {
+lib/services/google_drive_service.dart:59:        } else if (event is GoogleSignInAuthenticationEventSignOut) {
+lib/services/google_drive_service.dart:77:  Future<GoogleSignInAccount?> restoreAccount() async {
+lib/services/google_drive_service.dart:274:  Future<void> signOut() async {
+lib/services/google_drive_service.dart:276:    await _google.signOut();
+lib/services/google_drive_service.dart:283:    await signOut();
+
+===== GOOGLE DRIVE SERVICE =====
+import 'dart:async';
+import 'dart:convert';
+import 'dart:typed_data';
+
+import 'package:extension_google_sign_in_as_googleapis_auth/extension_google_sign_in_as_googleapis_auth.dart';
+import 'package:google_sign_in/google_sign_in.dart';
+import 'package:googleapis/drive/v3.dart' as drive;
+import 'package:shared_preferences/shared_preferences.dart';
+
+class GoogleDriveService {
+  GoogleDriveService._();
+
+  static final GoogleDriveService instance = GoogleDriveService._();
+
+  static const String _serverClientId =
+      '83176740993-ughbfdiak2v3mq31prsfpae7pffkaku7.apps.googleusercontent.com';
+
+  static const List<String> _scopes = [
+    'https://www.googleapis.com/auth/drive.file',
+  ];
+
+  static const String _backupFormat =
+      'buku_utang_warung_encrypted_backup';
+
+  static const int _backupVersion = 1;
+  static const int _maximumBackupBytes = 100 * 1024 * 1024;
+
+  final GoogleSignIn _google = GoogleSignIn.instance;
+  final SharedPreferencesAsync _preferences = SharedPreferencesAsync();
+  static const String _savedAccountEmailKey = 'google_drive_saved_email';
+  Future<void>? _initialization;
+  GoogleSignInAccount? _account;
+  StreamSubscription<GoogleSignInAuthenticationEvent>? _authSubscription;
+
+  final StreamController<GoogleSignInAccount?> _accountChanges =
+      StreamController<GoogleSignInAccount?>.broadcast();
+
+  GoogleSignInAccount? get account => _account;
+  Stream<GoogleSignInAccount?> get accountChanges =>
+      _accountChanges.stream;
+
+  void _setAccount(GoogleSignInAccount? account) {
+    _account = account;
+    _accountChanges.add(account);
+  }
+
+  Future<void> initialize() {
+    return _initialization ??= _initialize();
+  }
+
+  Future<void> _initialize() async {
+    await _google.initialize(serverClientId: _serverClientId);
+
+    _authSubscription ??= _google.authenticationEvents.listen(
+      (event) {
+        if (event is GoogleSignInAuthenticationEventSignIn) {
+          _restoreDiagnostic = 'AUTH_EVENT_SIGN_IN';
+          _setAccount(event.user);
+        } else if (event is GoogleSignInAuthenticationEventSignOut) {
+          _restoreDiagnostic = 'AUTH_EVENT_SIGN_OUT';
+          _setAccount(null);
+        }
+      },
+      onError: (Object error, StackTrace stack) {
+        _accountChanges.addError(error, stack);
+      },
+    );
+  }
+
+  String _restoreDiagnostic = 'BELUM_DIPERIKSA';
+
+  String get restoreDiagnostic => _restoreDiagnostic;
+
+  Future<String?> loadSavedAccountEmail() =>
+      _preferences.getString(_savedAccountEmailKey);
+
+  Future<GoogleSignInAccount?> restoreAccount() async {
+    _restoreDiagnostic = 'INITIALIZING';
+    await initialize();
+
+    if (_account != null) {
+      _restoreDiagnostic = 'SESSION_ACTIVE';
+      return _account;
+    }
+
+    _restoreDiagnostic = 'NO_ACTIVE_SESSION';
+    return null;
+  }
+
+  Future<T> _withDriveApi<T>(
+    Future<T> Function(drive.DriveApi api) action,
+  ) async {
+    final currentAccount = _account;
+
+    if (currentAccount == null) {
+      throw StateError(
+        'Sesi Google belum aktif. Hubungkan ulang Google Drive terlebih dahulu.',
+      );
+    }
+
+    final authorizationClient = currentAccount.authorizationClient;
+    final authorization =
+        await authorizationClient.authorizationForScopes(_scopes) ??
+        await authorizationClient.authorizeScopes(_scopes);
+
+    final client = authorization.authClient(scopes: _scopes);
+
+    try {
+      final api = drive.DriveApi(client);
+      return await action(api);
+    } finally {
+      client.close();
+    }
+  }
+
+  void _validateEncryptedFile(List<int> bytes) {
+    if (bytes.isEmpty || bytes.length > _maximumBackupBytes) {
+      throw const FormatException('Ukuran backup tidak valid.');
+    }
+
+    try {
+      final decoded = jsonDecode(utf8.decode(bytes));
+
+      if (decoded is! Map<String, dynamic> ||
+          decoded['format'] != _backupFormat ||
+          decoded['version'] != _backupVersion ||
+          decoded['cipher'] != 'AES-256-GCM' ||
+          decoded['kdf'] != 'PBKDF2-HMAC-SHA256' ||
+          decoded['iterations'] != 310000 ||
+          decoded['salt'] is! String ||
+          decoded['nonce'] is! String ||
+          decoded['ciphertext'] is! String ||
+          decoded['mac'] is! String) {
+        throw const FormatException(
+          'File bukan backup terenkripsi Buku Utang Warung.',
+        );
+      }
+    } on FormatException {
+      rethrow;
+    } catch (_) {
+      throw const FormatException('Isi file backup tidak valid.');
+    }
+  }
+
+  Future<drive.File> uploadEncryptedBackup(
+    List<int> encryptedBytes,
+  ) async {
+    _validateEncryptedFile(encryptedBytes);
+
+    final timestamp = DateTime.now().toUtc().millisecondsSinceEpoch;
+
+    return _withDriveApi((api) async {
+      final metadata = drive.File()
+        ..name = 'backup_buku_utang_$timestamp.buwbackup'
+        ..mimeType = 'application/octet-stream'
+        ..appProperties = {
+          'app': 'buku_utang_warung',
+          'format': 'encrypted_backup',
+          'version': '1',
+        };
+
+      final media = drive.Media(
+        Stream<List<int>>.value(encryptedBytes),
+        encryptedBytes.length,
+      );
+
+      final uploaded = await api.files.create(
+        metadata,
+        uploadMedia: media,
+        $fields: 'id,name,mimeType,size,createdTime',
+      );
+
+      if (uploaded.id == null) {
+        throw StateError('Upload selesai tetapi ID file tidak ditemukan.');
+      }
+
+      return uploaded;
+    });
+  }
+
+  Future<List<drive.File>> listEncryptedBackups() async {
+    return _withDriveApi((api) async {
+      final results = <drive.File>[];
+      String? pageToken;
+
+      do {
+        final response = await api.files.list(
+          q: "trashed = false and "
+              "appProperties has { key='app' and "
+              "value='buku_utang_warung' }",
+          spaces: 'drive',
+          pageSize: 100,
+          pageToken: pageToken,
+          orderBy: 'createdTime desc',
+          $fields: 'nextPageToken,files(id,name,mimeType,size,createdTime)',
+        );
+
+        results.addAll(response.files ?? <drive.File>[]);
+        pageToken = response.nextPageToken;
+      } while (pageToken != null);
+
+      return results;
+    });
+  }
+
+  Future<Uint8List> downloadEncryptedBackup(String fileId) async {
+    if (fileId.trim().isEmpty) {
+      throw ArgumentError('ID file backup kosong.');
+    }
+
+    return _withDriveApi((api) async {
+      final response = await api.files.get(
+        fileId,
+        downloadOptions: drive.DownloadOptions.fullMedia,
+      );
+
+      if (response is! drive.Media) {
+        throw StateError('Google Drive tidak mengembalikan isi file.');
+      }
+
+      final builder = BytesBuilder(copy: false);
+
+      await for (final chunk in response.stream) {
+        builder.add(chunk);
+
+        if (builder.length > _maximumBackupBytes) {
+          throw const FormatException(
+            'File backup melebihi batas ukuran 100 MB.',
+          );
+        }
+      }
+
+      final bytes = builder.takeBytes();
+      _validateEncryptedFile(bytes);
+
+      return bytes;
+    });
+  }
+
+  Future<String> connectAndTest() async {
+    await initialize();
+
+    if (!_google.supportsAuthenticate()) {
+      throw Exception('Metode login tidak didukung pada perangkat ini.');
+    }
+
+    final account = await _google.authenticate();
+
+    final authorizationClient = account.authorizationClient;
+    final authorization =
+        await authorizationClient.authorizationForScopes(_scopes) ??
+        await authorizationClient.authorizeScopes(_scopes);
+
+    final client = authorization.authClient(scopes: _scopes);
+
+    try {
+      final api = drive.DriveApi(client);
+
+      await api.files.list(
+        pageSize: 1,
+        $fields: 'files(id,name)',
+      );
+    } finally {
+      client.close();
+    }
+
+    _setAccount(account);
+    await _preferences.setString(_savedAccountEmailKey, account.email);
+    _restoreDiagnostic = 'SESSION_ACTIVE';
+
+    return account.email;
+  }
+
+  Future<void> signOut() async {
+    await initialize();
+    await _google.signOut();
+    await _preferences.remove(_savedAccountEmailKey);
+    _setAccount(null);
+    _restoreDiagnostic = 'SIGNED_OUT';
+  }
+
+  Future<String> switchAccount() async {
+    await signOut();
+    return connectAndTest();
+  }
+}
+
+===== SETTINGS GOOGLE FLOW =====
+1-import 'dart:async';
+2-import 'dart:convert';
+3-import 'dart:typed_data';
+4-
+5-import 'package:file_picker/file_picker.dart';
+6-import 'package:flutter/material.dart';
+7:import 'package:google_sign_in/google_sign_in.dart';
+8-
+9-import '../db.dart';
+10-import '../services/backup_crypto_service.dart';
+11-import '../services/backup_status.dart';
+12:import '../services/google_drive_service.dart';
+13-import '../services/shop_message_settings.dart';
+14-
+15-class SettingsScreen extends StatefulWidget {
+16-  const SettingsScreen({super.key});
+17-
+18-  @override
+19-  State<SettingsScreen> createState() => _SettingsScreenState();
+20-}
+21-
+22-class _SettingsScreenState extends State<SettingsScreen> {
+23-  bool _busy = false;
+24-  bool _savingShop = false;
+25-  final _shopNameController = TextEditingController();
+26-  final _shopHeaderController = TextEditingController();
+27-  final _shopFooterController = TextEditingController();
+28-
+29:  String? _googleEmail;
+30:  String _googleRestoreStatus = 'Belum diperiksa';
+31:  StreamSubscription<GoogleSignInAccount?>? _googleAccountSubscription;
+32-
+33-  @override
+34-  void initState() {
+35-    super.initState();
+36-    _loadShopSettings();
+37-
+38:    final google = GoogleDriveService.instance;
+39:    _googleEmail = google.account?.email;
+40-
+41:    _googleAccountSubscription = google.accountChanges.listen(
+42-      (account) {
+43-        // Event tanpa akun tidak menghapus identitas yang tersimpan.
+44:        // Logout eksplisit ditangani oleh _logoutGoogle().
+45-        if (!mounted || account == null) return;
+46-
+47-        setState(() {
+48:          _googleEmail = account.email;
+49:          _googleRestoreStatus =
+50:              GoogleDriveService.instance.restoreDiagnostic;
+51-        });
+52-      },
+53-      onError: (Object error, StackTrace stack) {
+54:        debugPrint('Perubahan sesi Google gagal: $error');
+55-      },
+56-    );
+57-
+58:    _restoreGoogleStatus();
+59-  }
+60-
+61-  Future<void> _loadShopSettings() async {
+62-    try {
+63-      final settings = await ShopMessageSettings.load();
+64-      if (!mounted) return;
+65-      _shopNameController.text = settings.shopName;
+66-      _shopHeaderController.text = settings.header;
+67-      _shopFooterController.text = settings.footer;
+68-    } catch (e) {
+69-      debugPrint('Gagal memuat pengaturan warung: $e');
+70-    }
+71-  }
+72-
+73-  Future<void> _saveShopSettings() async {
+74-    if (_savingShop) return;
+75-    setState(() => _savingShop = true);
+76-    try {
+77-      await ShopMessageSettings(
+78-        shopName: _shopNameController.text,
+79-        header: _shopHeaderController.text,
+80-        footer: _shopFooterController.text,
+81-      ).save();
+82-
+83-      if (!mounted) return;
+84-      ScaffoldMessenger.of(context).showSnackBar(
+85-        const SnackBar(content: Text('Pengaturan warung berhasil disimpan.')),
+86-      );
+87-    } catch (e) {
+88-      if (!mounted) return;
+89-      ScaffoldMessenger.of(context).showSnackBar(
+90-        SnackBar(content: Text('Gagal menyimpan pengaturan: $e')),
+91-      );
+92-    } finally {
+93-      if (mounted) setState(() => _savingShop = false);
+94-    }
+95-  }
+96-
+97-  @override
+98-  void dispose() {
+99:    _googleAccountSubscription?.cancel();
+100-    _shopNameController.dispose();
+101-    _shopHeaderController.dispose();
+102-    _shopFooterController.dispose();
+103-    super.dispose();
+104-  }
+105-
+106:  Future<void> _restoreGoogleStatus() async {
+107-    try {
+108:      final google = GoogleDriveService.instance;
+109:      final account = await google.restoreAccount();
+110:      final savedEmail = await google.loadSavedAccountEmail();
+111-
+112-      if (!mounted) return;
+113-
+114-      setState(() {
+115:        _googleEmail = account?.email ?? savedEmail;
+116-        final base = account != null
+117-            ? 'SESI_AKTIF'
+118-            : savedEmail != null
+119-                ? 'IDENTITAS_TERSIMPAN_SESI_BELUM_AKTIF'
+120-                : 'BELUM_TERHUBUNG';
+121:        _googleRestoreStatus = '$base | ${google.restoreDiagnostic}';
+122-      });
+123-    } catch (e) {
+124-      if (!mounted) return;
+125-      setState(() {
+126:        _googleRestoreStatus =
+127:            GoogleDriveService.instance.restoreDiagnostic;
+128-      });
+129:      debugPrint('Pemulihan status Google gagal: $e');
+130-    }
+131-  }
+132-
+133:  Future<void> _connectGoogle() async {
+134-    if (_busy) return;
+135-    setState(() => _busy = true);
+136-
+137-    try {
+138-      final email =
+139:          await GoogleDriveService.instance.connectAndTest();
+140-
+141-      if (!mounted) return;
+142:      setState(() => _googleEmail = email);
+143:      _message('Google Drive berhasil terhubung: $email');
+144-    } catch (e) {
+145:      _message('Koneksi Google gagal: $e');
+146-    } finally {
+147-      if (mounted) setState(() => _busy = false);
+148-    }
+149-  }
+150-
+151:  Future<void> _switchGoogle() async {
+152-    if (_busy) return;
+153-    setState(() => _busy = true);
+154-
+155-    try {
+156-      final email =
+157:          await GoogleDriveService.instance.switchAccount();
+158-
+159-      if (!mounted) return;
+160:      setState(() => _googleEmail = email);
+161:      _message('Akun Google berhasil diganti: $email');
+162-    } catch (e) {
+163-      _message('Ganti akun gagal: $e');
+164-    } finally {
+165-      if (mounted) setState(() => _busy = false);
+166-    }
+167-  }
+168-
+169:  Future<void> _logoutGoogle() async {
+170-    if (_busy) return;
+171-    setState(() => _busy = true);
+172-
+173-    try {
+174:      await GoogleDriveService.instance.signOut();
+175-
+176-      if (!mounted) return;
+177:      setState(() => _googleEmail = null);
+178:      _message('Logout Google berhasil. Data lokal tetap aman.');
+179-    } catch (e) {
+180:      _message('Logout Google gagal: $e');
+181-    } finally {
+182-      if (mounted) setState(() => _busy = false);
+183-    }
+184-  }
+185-
+186-  void _message(String message) {
+187-    if (!mounted) return;
+188-    ScaffoldMessenger.of(context).showSnackBar(
+189-      SnackBar(content: Text(message)),
+190-    );
+191-  }
+192-
+193-  Future<void> _backup() async {
+194-    if (_busy) return;
+195-    setState(() => _busy = true);
+196-
+197-    try {
+198-      final revision = BackupStatus.instance.revision;
+199-      final data = await AppDb.instance.exportBackup();
+200-      final json = const JsonEncoder.withIndent('  ').convert(data);
+201-      final now = DateTime.now();
+202-      final stamp = '${now.year}'
+203-          '${now.month.toString().padLeft(2, '0')}'
+204-          '${now.day.toString().padLeft(2, '0')}_'
+205-          '${now.hour.toString().padLeft(2, '0')}'
+206-          '${now.minute.toString().padLeft(2, '0')}';
+207-
+208-      final result = await FilePicker.saveFile(
+209-        dialogTitle: 'Simpan backup Buku Utang Warung',
+210-        fileName: 'backup_buku_utang_$stamp.json',
+211-        bytes: Uint8List.fromList(utf8.encode(json)),
+212-        mimeType: 'application/json',
+213-      );
+214-
+215-      if (result != null) {
+216-        await BackupStatus.instance.markLocalBackedUp(revision);
+217-        _message('File backup berhasil disimpan.');
+218-      }
+219-    } catch (e) {
+220-      _message('Backup gagal: $e');
+221-    } finally {
+222-      if (mounted) setState(() => _busy = false);
+223-    }
+224-  }
+225-
+226-  Future<void> _restore() async {
+227-    if (_busy) return;
+228-    setState(() => _busy = true);
+229-
+230-    try {
+231-      final file = await FilePicker.pickFile(
+232-        type: FileType.custom,
+233-        allowedExtensions: ['json'],
+234-      );
+235-
+236-      if (file == null) return;
+237-
+238-      final bytes = await file.readAsBytes();
+239-      final decoded = jsonDecode(utf8.decode(bytes));
+240-
+241-      if (decoded is! Map<String, dynamic>) {
+242-        throw const FormatException('Isi file JSON tidak valid');
+243-      }
+244-
+245-      // Periksa semua isi file sebelum meminta persetujuan penggantian data.
+246-      AppDb.validateBackupData(decoded);
+247-
+248-      final customerCount = (decoded['customers'] as List).length;
+249-      final txnCount = (decoded['transactions'] as List).length;
+250-
+251-      if (!mounted) return;
+252-
+253-      final confirmed = await showDialog<bool>(
+254-        context: context,
+255-        builder: (context) => AlertDialog(
+256-          title: const Text('Pulihkan data?'),
+257-          content: Text(
+258-            'Data saat ini akan DIGANTI dengan isi backup.\n\n'
+259-            'Pelanggan: $customerCount\n'
+260-            'Transaksi: $txnCount\n\n'
+261-            'Pastikan Anda sudah membuat backup data saat ini.',
+262-          ),
+263-          actions: [
+264-            TextButton(
+265-              onPressed: () => Navigator.pop(context, false),
+266-              child: const Text('Batal'),
+267-            ),
+268-            FilledButton(
+269-              onPressed: () => Navigator.pop(context, true),
+270-              child: const Text('Ganti dan pulihkan'),
+271-            ),
+272-          ],
+273-        ),
+274-      );
+275-
+276-      if (confirmed != true || !mounted) return;
+277-
+278-      await AppDb.instance.restoreBackup(decoded);
+279-      _message('Restore berhasil. Data telah dipulihkan.');
+280-    } catch (e) {
+--
+324-                    const SizedBox(height: 12),
+325-                    TextField(
+326-                      controller: confirmController,
+327-                      obscureText: true,
+328-                      decoration: const InputDecoration(
+329-                        labelText: 'Ulangi password backup',
+330-                      ),
+331-                      onChanged: (_) {
+332-                        if (mismatch != null) {
+333-                          setDialogState(() => mismatch = null);
+334-                        }
+335-                      },
+336-                    ),
+337-                  ],
+338-                  if (mismatch != null) ...[
+339-                    const SizedBox(height: 8),
+340-                    Text(
+341-                      mismatch!,
+342-                      style: TextStyle(
+343-                        color: Theme.of(dialogContext).colorScheme.error,
+344-                      ),
+345-                    ),
+346-                  ],
+347-                  const SizedBox(height: 8),
+348-                  const Text(
+349:                    'Password ini berbeda dari password Google. '
+350-                    'Aplikasi tidak menyimpan password ini. '
+351-                    'Jika lupa, backup tidak dapat dipulihkan.',
+352-                    style: TextStyle(fontSize: 12),
+353-                  ),
+354-                ],
+355-              ),
+356-            ),
+357-            actions: [
+358-              TextButton(
+359-                onPressed: () => Navigator.pop(dialogContext),
+360-                child: const Text('Batal'),
+361-              ),
+362-              FilledButton(
+363-                onPressed: () {
+364-                  if (formKey.currentState?.validate() != true) return;
+365-
+366-                  if (confirm &&
+367-                      passwordController.text != confirmController.text) {
+368-                    setDialogState(
+369-                      () => mismatch = 'Password yang dimasukkan tidak sama.',
+370-                    );
+371-                    return;
+372-                  }
+373-
+374-                  Navigator.pop(dialogContext, passwordController.text);
+375-                },
+376-                child: const Text('Lanjutkan'),
+377-              ),
+378-            ],
+379-          ),
+380-        ),
+381-      );
+382-    } finally {
+383-      passwordController.dispose();
+384-      confirmController.dispose();
+385-    }
+386-  }
+387-
+388:  Future<void> _cloudBackup() async {
+389:    if (_busy || _googleEmail == null) return;
+390-
+391-    setState(() => _busy = true);
+392-
+393-    try {
+394:      if (GoogleDriveService.instance.account == null) {
+395:        final email = await GoogleDriveService.instance.connectAndTest();
+396-        if (!mounted) return;
+397:        setState(() => _googleEmail = email);
+398-      }
+399-
+400-      final password = await _askCloudPassword(confirm: true);
+401-      if (password == null || !mounted) return;
+402-
+403-      final revision = BackupStatus.instance.revision;
+404-      final data = await AppDb.instance.exportBackup();
+405-      final encrypted =
+406-          await BackupCryptoService.instance.encryptBackup(data, password);
+407-
+408-      final uploaded =
+409:          await GoogleDriveService.instance.uploadEncryptedBackup(encrypted);
+410-
+411-      await BackupStatus.instance.markBackedUp(revision);
+412-      _message('Backup terenkripsi berhasil diunggah: ${uploaded.name}');
+413-    } catch (e) {
+414:      _message('Backup Google Drive gagal: $e');
+415-    } finally {
+416-      if (mounted) setState(() => _busy = false);
+417-    }
+418-  }
+419-
+420:  Future<void> _cloudRestore() async {
+421:    if (_busy || _googleEmail == null) return;
+422-
+423-    setState(() => _busy = true);
+424-
+425-    try {
+426:      if (GoogleDriveService.instance.account == null) {
+427:        final email = await GoogleDriveService.instance.connectAndTest();
+428-        if (!mounted) return;
+429:        setState(() => _googleEmail = email);
+430-      }
+431-
+432-      final files =
+433:          await GoogleDriveService.instance.listEncryptedBackups();
+434-
+435-      if (!mounted) return;
+436-
+437-      if (files.isEmpty) {
+438:        _message('Belum ada backup Buku Utang Warung di Google Drive.');
+439-        return;
+440-      }
+441-
+442-      final selectedIndex = await showDialog<int>(
+443-        context: context,
+444-        builder: (dialogContext) => AlertDialog(
+445-          title: const Text('Pilih backup cloud'),
+446-          content: SizedBox(
+447-            width: double.maxFinite,
+448-            child: ListView(
+449-              shrinkWrap: true,
+450-              children: [
+451-                for (var i = 0; i < files.length; i++)
+452-                  ListTile(
+453-                    leading: const Icon(Icons.cloud_download_outlined),
+454-                    title: Text(files[i].name ?? 'Backup tanpa nama'),
+455-                    subtitle: Text(
+456-                      files[i].createdTime?.toLocal().toString() ??
+457-                          'Waktu tidak tersedia',
+458-                    ),
+459-                    onTap: () => Navigator.pop(dialogContext, i),
+460-                  ),
+461-              ],
+462-            ),
+463-          ),
+464-          actions: [
+465-            TextButton(
+466-              onPressed: () => Navigator.pop(dialogContext),
+467-              child: const Text('Batal'),
+468-            ),
+469-          ],
+470-        ),
+471-      );
+472-
+473-      if (selectedIndex == null || !mounted) return;
+474-
+475-      final selectedFile = files[selectedIndex];
+476-      final fileId = selectedFile.id;
+477-      if (fileId == null || fileId.isEmpty) {
+478:        throw StateError('ID backup Google Drive tidak tersedia.');
+479-      }
+480-
+481-      final password = await _askCloudPassword(confirm: false);
+482-      if (password == null || !mounted) return;
+483-
+484-      final encrypted =
+485:          await GoogleDriveService.instance.downloadEncryptedBackup(fileId);
+486-
+487-      final decoded =
+488-          await BackupCryptoService.instance.decryptBackup(
+489-        encrypted,
+490-        password,
+491-      );
+492-
+493-      AppDb.validateBackupData(decoded);
+494-
+495-      final customerCount = (decoded['customers'] as List).length;
+496-      final transactionCount = (decoded['transactions'] as List).length;
+497-
+498-      if (!mounted) return;
+499-
+500-      final confirmed = await showDialog<bool>(
+501-        context: context,
+502-        builder: (dialogContext) => AlertDialog(
+503-          title: const Text('Pulihkan backup cloud?'),
+504-          content: Text(
+505-            'Data lokal saat ini akan DIGANTI dengan isi backup cloud.\n\n'
+506-            'Pelanggan: $customerCount\n'
+507-            'Transaksi: $transactionCount\n\n'
+508-            'Pastikan Anda sudah memiliki salinan data saat ini.',
+509-          ),
+510-          actions: [
+511-            TextButton(
+512-              onPressed: () => Navigator.pop(dialogContext, false),
+513-              child: const Text('Batal'),
+514-            ),
+515-            FilledButton(
+516-              onPressed: () => Navigator.pop(dialogContext, true),
+517-              child: const Text('Ganti dan pulihkan'),
+518-            ),
+519-          ],
+520-        ),
+521-      );
+522-
+523-      if (confirmed != true || !mounted) return;
+524-
+525-      await AppDb.instance.restoreBackup(decoded);
+526:      _message('Restore dari Google Drive berhasil.');
+527-    } catch (e) {
+528:      _message('Restore Google Drive gagal. Data lokal tidak diganti: $e');
+529-    } finally {
+530-      if (mounted) setState(() => _busy = false);
+531-    }
+532-  }
+533-
+534-  @override
+535-  Widget build(BuildContext context) {
+536-    return Scaffold(
+537-      appBar: AppBar(title: const Text('Pengaturan')),
+538-      body: ListView(
+539-        padding: const EdgeInsets.all(16),
+540-        children: [
+541-          Card(
+542-            child: Padding(
+543-              padding: const EdgeInsets.all(16),
+544-              child: Column(
+545-                crossAxisAlignment: CrossAxisAlignment.start,
+546-                children: [
+547-                  const ListTile(
+548-                    contentPadding: EdgeInsets.zero,
+549-                    leading: Icon(Icons.storefront_outlined),
+550-                    title: Text('Identitas warung'),
+551-                    subtitle: Text(
+552-                      'Nama dan format pesan untuk penagihan serta bukti pelunasan.',
+553-                    ),
+554-                  ),
+555-                  TextField(
+556-                    controller: _shopNameController,
+557-                    decoration: const InputDecoration(
+558-                      labelText: 'Nama warung',
+559-                      hintText: 'Contoh: Warung Berkah',
+560-                    ),
+561-                    textCapitalization: TextCapitalization.words,
+562-                  ),
+563-                  const SizedBox(height: 12),
+564-                  TextField(
+565-                    controller: _shopHeaderController,
+566-                    decoration: const InputDecoration(
+567-                      labelText: 'Header / pembuka pesan',
+568-                      hintText: 'Teks pembuka (opsional)',
+569-                    ),
+570-                    minLines: 1,
+571-                    maxLines: 3,
+572-                  ),
+573-                  const SizedBox(height: 12),
+574-                  TextField(
+575-                    controller: _shopFooterController,
+576-                    decoration: const InputDecoration(
+577-                      labelText: 'Footer / penutup pesan',
+578-                      hintText: 'Teks penutup (opsional)',
+579-                    ),
+580-                    minLines: 1,
+581-                    maxLines: 3,
+582-                  ),
+583-                  const SizedBox(height: 16),
+584-                  SizedBox(
+585-                    width: double.infinity,
+586-                    child: FilledButton.icon(
+587-                      onPressed: _savingShop ? null : _saveShopSettings,
+588-                      icon: const Icon(Icons.save_outlined),
+589-                      label: Text(
+590-                        _savingShop ? 'Menyimpan...' : 'Simpan pengaturan warung',
+591-                      ),
+592-                    ),
+593-                  ),
+594-                ],
+595-              ),
+596-            ),
+597-          ),
+598-          const SizedBox(height: 12),
+599-          Card(
+600-            child: Column(
+601-              children: [
+602-                const ListTile(
+603-                  leading: Icon(Icons.backup_outlined),
+604-                  title: Text('Backup lokal'),
+605-                  subtitle: Text(
+606-                    'Simpan semua pelanggan dan transaksi ke file JSON.',
+607-                  ),
+608-                ),
+609-                Padding(
+610-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+611-                  child: SizedBox(
+612-                    width: double.infinity,
+613-                    child: FilledButton.icon(
+614-                      onPressed: _busy ? null : _backup,
+615-                      icon: const Icon(Icons.save_alt),
+616-                      label: const Text('Buat backup'),
+617-                    ),
+618-                  ),
+619-                ),
+620-              ],
+621-            ),
+622-          ),
+623-          const SizedBox(height: 12),
+624-          Card(
+625-            child: Column(
+626-              children: [
+627-                const ListTile(
+628-                  leading: Icon(Icons.restore),
+--
+634-                Padding(
+635-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+636-                  child: SizedBox(
+637-                    width: double.infinity,
+638-                    child: OutlinedButton.icon(
+639-                      onPressed: _busy ? null : _restore,
+640-                      icon: const Icon(Icons.folder_open),
+641-                      label: const Text('Pilih file backup'),
+642-                    ),
+643-                  ),
+644-                ),
+645-              ],
+646-            ),
+647-          ),
+648-          const SizedBox(height: 12),
+649-          const SizedBox(height: 12),
+650-          Card(
+651-            child: Padding(
+652-              padding: const EdgeInsets.all(16),
+653-              child: Column(
+654-                crossAxisAlignment: CrossAxisAlignment.start,
+655-                children: [
+656-                  const ListTile(
+657-                    contentPadding: EdgeInsets.zero,
+658-                    leading: Icon(Icons.cloud_outlined),
+659:                    title: Text('Google Drive'),
+660-                    subtitle: Text(
+661:                      'Hubungkan akun Google untuk menyiapkan backup cloud.',
+662-                    ),
+663-                  ),
+664-                  Padding(
+665-                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+666-                    child: Align(
+667-                      alignment: Alignment.centerLeft,
+668-                      child: Column(
+669-                        crossAxisAlignment: CrossAxisAlignment.start,
+670-                        children: [
+671-                          Text(
+672:                            GoogleDriveService.instance.account != null
+673:                                ? 'Sesi Google aktif.'
+674:                                : _googleEmail != null
+675:                                    ? 'Akun tersimpan. Ketuk "Verifikasi akun Google" '
+676-                                        'sebelum backup atau pulihkan.'
+677:                                    : 'Belum terhubung ke Google Drive.',
+678-                            style: const TextStyle(fontSize: 13),
+679-                          ),
+680-                          const SizedBox(height: 4),
+681-                          Text(
+682:                            'Detail teknis: $_googleRestoreStatus',
+683-                            style: const TextStyle(fontSize: 11),
+684-                          ),
+685-                        ],
+686-                      ),
+687-                    ),
+688-                  ),
+689:                  if (_googleEmail != null) ...[
+690-                    const SizedBox(height: 8),
+691-                    ListTile(
+692-                      contentPadding: EdgeInsets.zero,
+693-                      leading: const Icon(Icons.account_circle_outlined),
+694:                      title: const Text('Akun Google terakhir digunakan'),
+695:                      subtitle: Text(_googleEmail!),
+696-                    ),
+697:                    if (GoogleDriveService.instance.account == null) ...[
+698-                      const SizedBox(height: 8),
+699-                      SizedBox(
+700-                        width: double.infinity,
+701-                        child: FilledButton.icon(
+702:                          onPressed: _busy ? null : _connectGoogle,
+703-                          icon: const Icon(Icons.login),
+704:                          label: const Text('Verifikasi akun Google'),
+705-                        ),
+706-                      ),
+707-                    ],
+708-                    SizedBox(
+709-                      width: double.infinity,
+710-                      child: OutlinedButton.icon(
+711:                        onPressed: _busy ? null : _switchGoogle,
+712-                        icon: const Icon(Icons.switch_account),
+713:                        label: const Text('Ganti akun Google'),
+714-                      ),
+715-                    ),
+716-                    SizedBox(
+717-                      width: double.infinity,
+718-                      child: TextButton.icon(
+719:                        onPressed: _busy ? null : _logoutGoogle,
+720-                        icon: const Icon(Icons.logout),
+721:                        label: const Text('Logout Google'),
+722-                      ),
+723-                    ),
+724-                  ] else
+725-                    SizedBox(
+726-                      width: double.infinity,
+727-                      child: FilledButton.icon(
+728:                        onPressed: _busy ? null : _connectGoogle,
+729-                        icon: const Icon(Icons.login),
+730:                        label: const Text('Hubungkan Google Drive'),
+731-                      ),
+732-                    ),
+733:                  if (_googleEmail != null) ...[
+734-                    const SizedBox(height: 12),
+735-                    SizedBox(
+736-                      width: double.infinity,
+737-                      child: FilledButton.icon(
+738:                        onPressed: _busy ? null : _cloudBackup,
+739-                        icon: const Icon(Icons.cloud_upload_outlined),
+740:                        label: const Text('Backup ke Google Drive'),
+741-                      ),
+742-                    ),
+743-                    const SizedBox(height: 8),
+744-                    SizedBox(
+745-                      width: double.infinity,
+746-                      child: OutlinedButton.icon(
+747:                        onPressed: _busy ? null : _cloudRestore,
+748-                        icon: const Icon(Icons.cloud_download_outlined),
+749:                        label: const Text('Pulihkan dari Google Drive'),
+750-                      ),
+751-                    ),
+752-                  ],
+753-                  const SizedBox(height: 8),
+754-                  const Text(
+755-                    'Backup cloud dienkripsi sebelum dikirim. '
+756-                    'Gunakan password backup khusus dan ingat password tersebut '
+757-                    'untuk memulihkan data.',
+758-                    style: TextStyle(fontSize: 12),
+759-                  ),
+760-                ],
+761-              ),
+762-            ),
+763-          ),
+764-          if (_busy) ...[
+765-            const SizedBox(height: 20),
+766-            const Center(child: CircularProgressIndicator()),
+767-          ],
+768-          const SizedBox(height: 16),
+769-          const Text(
+770-            'Data aplikasi tetap tersimpan di perangkat. '
+771:            'Logout akun Google nantinya tidak akan menghapus data lokal.',
+772-            textAlign: TextAlign.center,
+773-          ),
+774-        ],
+775-      ),
+776-    );
+777-  }
+778-}
+
+===== MAIN INITIALIZATION =====
+1-import 'package:flutter/material.dart';
+2-
+3-import 'screens/home_screen.dart';
+4-
+5:void main() {
+6-  WidgetsFlutterBinding.ensureInitialized();
+7-  runApp(const BukuUtangApp());
+8-}
+9-
+10-class BukuUtangApp extends StatelessWidget {
+11-  const BukuUtangApp({super.key});
+12-
+13-  @override
+14-  Widget build(BuildContext context) {
+15-    return MaterialApp(
+16-      title: 'Buku Utang Warung',
+17-      debugShowCheckedModeBanner: false,
+18-      theme: ThemeData(
+19-        useMaterial3: true,
+20-        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF2E7D32)),
+21-        visualDensity: VisualDensity.standard,
+22-      ),
+23-      home: const HomeScreen(),
+24-    );
+25-  }
+26-}
+
+===== GITHUB BUILD WORKFLOW =====
+name: Build APK
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Setup Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      # Buat scaffold Android tanpa kehilangan kode aplikasi
+      - name: Buat scaffold Android
+        run: |
+          set -euo pipefail
+
+          mkdir -p "$RUNNER_TEMP/bak"
+          cp -r lib test pubspec.yaml "$RUNNER_TEMP/bak/"
+
+          flutter create --platforms=android \
+            --org id.warung \
+            --project-name buku_utang_warung .
+
+          rm -rf lib test pubspec.yaml
+          cp -r "$RUNNER_TEMP/bak/lib" lib
+          cp -r "$RUNNER_TEMP/bak/test" test
+          cp "$RUNNER_TEMP/bak/pubspec.yaml" pubspec.yaml
+
+          sed -i 's/android:label="[^"]*"/android:label="Buku Utang Warung"/' \
+            android/app/src/main/AndroidManifest.xml
+
+      # Siapkan keystore dari GitHub Secrets
+      - name: Siapkan keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "ERROR: KEYSTORE_BASE64 belum tersedia"
+            exit 1
+          fi
+
+          printf '%s' "$KEYSTORE_BASE64" \
+            | base64 --decode > android/app/upload-keystore.jks
+
+          test -s android/app/upload-keystore.jks
+          echo "Keystore berhasil disiapkan"
+
+      # Konfigurasi signing Kotlin DSL
+      - name: Konfigurasi signing Gradle
+        run: |
+          set -euo pipefail
+
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          path = Path("android/app/build.gradle.kts")
+          if not path.is_file():
+              raise SystemExit("build.gradle.kts tidak ditemukan")
+
+          text = path.read_text()
+
+          android = list(re.finditer(r'(?m)^android\s*\{', text))
+          if len(android) != 1:
+              raise SystemExit("Blok android tidak ditemukan atau ambigu")
+
+          if re.search(r'(?m)^[ \t]*signingConfigs\s*\{', text):
+              raise SystemExit("Deklarasi signingConfigs sudah ada; hentikan untuk pemeriksaan manual")
+
+          debug_pattern = re.compile(
+              r'(?m)^([ \t]*)signingConfig\s*=\s*signingConfigs\.getByName\("debug"\)[ \t]*$'
+          )
+          debug = list(debug_pattern.finditer(text))
+
+          if len(debug) != 1:
+              raise SystemExit("Referensi signing debug tidak ditemukan atau ambigu")
+
+          indent = re.match(r'[ \t]*', text[android[0].start():]).group(0)
+          child = indent + "    "
+          grand = child + "    "
+
+          signing = (
+              "\n" + child + "signingConfigs {\n"
+              + grand + 'create("release") {\n'
+              + grand + '    keyAlias = System.getenv("KEY_ALIAS") ?: error("KEY_ALIAS belum tersedia")\n'
+              + grand + '    keyPassword = System.getenv("KEY_PASSWORD") ?: error("KEY_PASSWORD belum tersedia")\n'
+              + grand + '    storeFile = file(System.getenv("KEYSTORE_FILE") ?: error("KEYSTORE_FILE belum tersedia"))\n'
+              + grand + '    storePassword = System.getenv("KEYSTORE_PASSWORD") ?: error("KEYSTORE_PASSWORD belum tersedia")\n'
+              + grand + "}\n"
+              + child + "}\n"
+          )
+
+          pos = android[0].end()
+          text = text[:pos] + signing + text[pos:]
+
+          text, count = debug_pattern.subn(
+              r'\1signingConfig = signingConfigs.getByName("release")',
+              text,
+              count=1
+          )
+
+          if count != 1:
+              raise SystemExit("Penggantian signing gagal")
+
+          path.write_text(text)
+          print("Signing release berhasil dikonfigurasi")
+          PY
+
+      - name: Install dependency
+        run: flutter pub get
+
+      - name: Jalankan test
+        run: flutter test
+
+      # Build menggunakan keystore permanen
+      - name: Build APK release
+        env:
+          KEYSTORE_FILE: upload-keystore.jks
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          flutter build apk --release
+
+      # Verifikasi tanda tangan dan SHA-1 sertifikat
+      - name: Verifikasi APK
+        run: |
+          set -euo pipefail
+
+          APK="build/app/outputs/flutter-apk/app-release.apk"
+          EXPECTED_SHA1="251bc0b80ca1d1db4053682abc45162792408b0b"
+
+          test -s "$APK"
+
+          APKSIGNER=$(find "${ANDROID_HOME:?ANDROID_HOME belum tersedia}/build-tools" \
+            -type f -name apksigner | sort -V | tail -n 1)
+
+          test -n "$APKSIGNER"
+
+          CERT_INFO=$("$APKSIGNER" verify --print-certs "$APK")
+
+          printf '%s\n' "$CERT_INFO"
+
+          ACTUAL_SHA1=$(printf '%s\n' "$CERT_INFO" \
+            | sed -nE 's/.*certificate SHA-1 digest: ([[:xdigit:]:]+).*/\1/p' \
+            | head -n 1 \
+            | tr -d ':' \
+            | tr '[:upper:]' '[:lower:]')
+
+          if [ -z "$ACTUAL_SHA1" ]; then
+            echo "ERROR: SHA-1 sertifikat tidak ditemukan"
+            exit 1
+          fi
+
+          if [ "$ACTUAL_SHA1" != "$EXPECTED_SHA1" ]; then
+            echo "ERROR: SHA-1 sertifikat tidak cocok!"
+            echo "Build dihentikan."
+            exit 1
+          fi
+
+          echo "VERIFIKASI BERHASIL: SHA-1 cocok."
+
+      # Upload APK agar bisa diunduh dari GitHub Actions
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: buku-utang-warung-apk
+          path: build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error
+
+===== ANDROID PROJECT GENERATION =====
+34-          set -euo pipefail
+35-
+36-          mkdir -p "$RUNNER_TEMP/bak"
+37-          cp -r lib test pubspec.yaml "$RUNNER_TEMP/bak/"
+38-
+39:          flutter create --platforms=android \
+40-            --org id.warung \
+41-            --project-name buku_utang_warung .
+42-
+43-          rm -rf lib test pubspec.yaml
+44-          cp -r "$RUNNER_TEMP/bak/lib" lib
+45-          cp -r "$RUNNER_TEMP/bak/test" test
+46-          cp "$RUNNER_TEMP/bak/pubspec.yaml" pubspec.yaml
+47-
+
+===== ANDROID FILES IN REPOSITORY =====
+
+===== DIFF CHECK =====
+
+===== AUDIT END =====

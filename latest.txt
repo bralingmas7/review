@@ -1,4 +1,7 @@
-===== STATUS GIT =====
+===== GOOGLE SESSION AUDIT =====
+Mon Nov 16 23:32:41 WIB 2026
+
+===== GIT STATUS =====
  M lib/models.dart
  M lib/screens/customer_screen.dart
  M lib/screens/home_screen.dart
@@ -53,6 +56,38 @@
 ?? patch_google_session.py
 ?? patchv3.py
 ?? tambah_fitur.sh
+
+===== PUBSPEC =====
+name: buku_utang_warung
+description: Buku utang pelanggan untuk pemilik warung. Offline, cepat, dan bisa tagih lewat WhatsApp.
+publish_to: "none"
+version: 0.1.0+1
+
+environment:
+  sdk: ">=3.3.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  sqflite: ^2.3.3
+  path: ^1.9.0
+  url_launcher: ^6.3.0
+  file_picker: ^12.3.0
+
+  google_sign_in: ^7.2.0
+  googleapis: ^19.0.0
+  extension_google_sign_in_as_googleapis_auth: ^3.0.0
+  cryptography: ^2.7.0
+  shared_preferences: 2.3.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  sqflite_common_ffi: 2.3.3
+  sqlite3: 2.4.0
+
+flutter:
+  uses-material-design: true
 
 ===== GOOGLE SIGN-IN REFERENCES =====
 lib/screens/settings_screen.dart:31:  StreamSubscription<GoogleSignInAccount?>? _googleAccountSubscription;
@@ -355,7 +390,13 @@ class GoogleDriveService {
     _restoreDiagnostic = 'SIGNED_OUT';
   }
 
-===== SETTINGS GOOGLE REFERENCES =====
+  Future<String> switchAccount() async {
+    await signOut();
+    return connectAndTest();
+  }
+}
+
+===== SETTINGS GOOGLE FLOW =====
 1-import 'dart:async';
 2-import 'dart:convert';
 3-import 'dart:typed_data';
@@ -1089,45 +1130,245 @@ class GoogleDriveService {
 777-  }
 778-}
 
-===== INITIALIZATION DAN MAIN =====
-lib/screens/settings_screen.dart:31:  StreamSubscription<GoogleSignInAccount?>? _googleAccountSubscription;
-lib/screens/settings_screen.dart:38:    final google = GoogleDriveService.instance;
-lib/screens/settings_screen.dart:50:              GoogleDriveService.instance.restoreDiagnostic;
-lib/screens/settings_screen.dart:108:      final google = GoogleDriveService.instance;
-lib/screens/settings_screen.dart:127:            GoogleDriveService.instance.restoreDiagnostic;
-lib/screens/settings_screen.dart:139:          await GoogleDriveService.instance.connectAndTest();
-lib/screens/settings_screen.dart:157:          await GoogleDriveService.instance.switchAccount();
-lib/screens/settings_screen.dart:174:      await GoogleDriveService.instance.signOut();
-lib/screens/settings_screen.dart:394:      if (GoogleDriveService.instance.account == null) {
-lib/screens/settings_screen.dart:395:        final email = await GoogleDriveService.instance.connectAndTest();
-lib/screens/settings_screen.dart:409:          await GoogleDriveService.instance.uploadEncryptedBackup(encrypted);
-lib/screens/settings_screen.dart:426:      if (GoogleDriveService.instance.account == null) {
-lib/screens/settings_screen.dart:427:        final email = await GoogleDriveService.instance.connectAndTest();
-lib/screens/settings_screen.dart:433:          await GoogleDriveService.instance.listEncryptedBackups();
-lib/screens/settings_screen.dart:485:          await GoogleDriveService.instance.downloadEncryptedBackup(fileId);
-lib/screens/settings_screen.dart:672:                            GoogleDriveService.instance.account != null
-lib/screens/settings_screen.dart:697:                    if (GoogleDriveService.instance.account == null) ...[
-lib/services/google_drive_service.dart:10:class GoogleDriveService {
-lib/services/google_drive_service.dart:11:  GoogleDriveService._();
-lib/services/google_drive_service.dart:13:  static final GoogleDriveService instance = GoogleDriveService._();
-lib/services/google_drive_service.dart:28:  final GoogleSignIn _google = GoogleSignIn.instance;
-lib/services/google_drive_service.dart:32:  GoogleSignInAccount? _account;
-lib/services/google_drive_service.dart:33:  StreamSubscription<GoogleSignInAuthenticationEvent>? _authSubscription;
-lib/services/google_drive_service.dart:35:  final StreamController<GoogleSignInAccount?> _accountChanges =
-lib/services/google_drive_service.dart:36:      StreamController<GoogleSignInAccount?>.broadcast();
-lib/services/google_drive_service.dart:38:  GoogleSignInAccount? get account => _account;
-lib/services/google_drive_service.dart:39:  Stream<GoogleSignInAccount?> get accountChanges =>
-lib/services/google_drive_service.dart:42:  void _setAccount(GoogleSignInAccount? account) {
-lib/services/google_drive_service.dart:47:  Future<void> initialize() {
-lib/services/google_drive_service.dart:48:    return _initialization ??= _initialize();
-lib/services/google_drive_service.dart:51:  Future<void> _initialize() async {
-lib/services/google_drive_service.dart:52:    await _google.initialize(serverClientId: _serverClientId);
-lib/services/google_drive_service.dart:56:        if (event is GoogleSignInAuthenticationEventSignIn) {
-lib/services/google_drive_service.dart:59:        } else if (event is GoogleSignInAuthenticationEventSignOut) {
-lib/services/google_drive_service.dart:77:  Future<GoogleSignInAccount?> restoreAccount() async {
-lib/services/google_drive_service.dart:79:    await initialize();
-lib/services/google_drive_service.dart:241:    await initialize();
-lib/services/google_drive_service.dart:275:    await initialize();
+===== MAIN INITIALIZATION =====
+1-import 'package:flutter/material.dart';
+2-
+3-import 'screens/home_screen.dart';
+4-
+5:void main() {
+6-  WidgetsFlutterBinding.ensureInitialized();
+7-  runApp(const BukuUtangApp());
+8-}
+9-
+10-class BukuUtangApp extends StatelessWidget {
+11-  const BukuUtangApp({super.key});
+12-
+13-  @override
+14-  Widget build(BuildContext context) {
+15-    return MaterialApp(
+16-      title: 'Buku Utang Warung',
+17-      debugShowCheckedModeBanner: false,
+18-      theme: ThemeData(
+19-        useMaterial3: true,
+20-        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF2E7D32)),
+21-        visualDensity: VisualDensity.standard,
+22-      ),
+23-      home: const HomeScreen(),
+24-    );
+25-  }
+26-}
 
-===== ANDROID GOOGLE CONFIG =====
-find: ‘android/app’: No such file or directory
+===== GITHUB BUILD WORKFLOW =====
+name: Build APK
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Setup Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      # Buat scaffold Android tanpa kehilangan kode aplikasi
+      - name: Buat scaffold Android
+        run: |
+          set -euo pipefail
+
+          mkdir -p "$RUNNER_TEMP/bak"
+          cp -r lib test pubspec.yaml "$RUNNER_TEMP/bak/"
+
+          flutter create --platforms=android \
+            --org id.warung \
+            --project-name buku_utang_warung .
+
+          rm -rf lib test pubspec.yaml
+          cp -r "$RUNNER_TEMP/bak/lib" lib
+          cp -r "$RUNNER_TEMP/bak/test" test
+          cp "$RUNNER_TEMP/bak/pubspec.yaml" pubspec.yaml
+
+          sed -i 's/android:label="[^"]*"/android:label="Buku Utang Warung"/' \
+            android/app/src/main/AndroidManifest.xml
+
+      # Siapkan keystore dari GitHub Secrets
+      - name: Siapkan keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "ERROR: KEYSTORE_BASE64 belum tersedia"
+            exit 1
+          fi
+
+          printf '%s' "$KEYSTORE_BASE64" \
+            | base64 --decode > android/app/upload-keystore.jks
+
+          test -s android/app/upload-keystore.jks
+          echo "Keystore berhasil disiapkan"
+
+      # Konfigurasi signing Kotlin DSL
+      - name: Konfigurasi signing Gradle
+        run: |
+          set -euo pipefail
+
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          path = Path("android/app/build.gradle.kts")
+          if not path.is_file():
+              raise SystemExit("build.gradle.kts tidak ditemukan")
+
+          text = path.read_text()
+
+          android = list(re.finditer(r'(?m)^android\s*\{', text))
+          if len(android) != 1:
+              raise SystemExit("Blok android tidak ditemukan atau ambigu")
+
+          if re.search(r'(?m)^[ \t]*signingConfigs\s*\{', text):
+              raise SystemExit("Deklarasi signingConfigs sudah ada; hentikan untuk pemeriksaan manual")
+
+          debug_pattern = re.compile(
+              r'(?m)^([ \t]*)signingConfig\s*=\s*signingConfigs\.getByName\("debug"\)[ \t]*$'
+          )
+          debug = list(debug_pattern.finditer(text))
+
+          if len(debug) != 1:
+              raise SystemExit("Referensi signing debug tidak ditemukan atau ambigu")
+
+          indent = re.match(r'[ \t]*', text[android[0].start():]).group(0)
+          child = indent + "    "
+          grand = child + "    "
+
+          signing = (
+              "\n" + child + "signingConfigs {\n"
+              + grand + 'create("release") {\n'
+              + grand + '    keyAlias = System.getenv("KEY_ALIAS") ?: error("KEY_ALIAS belum tersedia")\n'
+              + grand + '    keyPassword = System.getenv("KEY_PASSWORD") ?: error("KEY_PASSWORD belum tersedia")\n'
+              + grand + '    storeFile = file(System.getenv("KEYSTORE_FILE") ?: error("KEYSTORE_FILE belum tersedia"))\n'
+              + grand + '    storePassword = System.getenv("KEYSTORE_PASSWORD") ?: error("KEYSTORE_PASSWORD belum tersedia")\n'
+              + grand + "}\n"
+              + child + "}\n"
+          )
+
+          pos = android[0].end()
+          text = text[:pos] + signing + text[pos:]
+
+          text, count = debug_pattern.subn(
+              r'\1signingConfig = signingConfigs.getByName("release")',
+              text,
+              count=1
+          )
+
+          if count != 1:
+              raise SystemExit("Penggantian signing gagal")
+
+          path.write_text(text)
+          print("Signing release berhasil dikonfigurasi")
+          PY
+
+      - name: Install dependency
+        run: flutter pub get
+
+      - name: Jalankan test
+        run: flutter test
+
+      # Build menggunakan keystore permanen
+      - name: Build APK release
+        env:
+          KEYSTORE_FILE: upload-keystore.jks
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          flutter build apk --release
+
+      # Verifikasi tanda tangan dan SHA-1 sertifikat
+      - name: Verifikasi APK
+        run: |
+          set -euo pipefail
+
+          APK="build/app/outputs/flutter-apk/app-release.apk"
+          EXPECTED_SHA1="251bc0b80ca1d1db4053682abc45162792408b0b"
+
+          test -s "$APK"
+
+          APKSIGNER=$(find "${ANDROID_HOME:?ANDROID_HOME belum tersedia}/build-tools" \
+            -type f -name apksigner | sort -V | tail -n 1)
+
+          test -n "$APKSIGNER"
+
+          CERT_INFO=$("$APKSIGNER" verify --print-certs "$APK")
+
+          printf '%s\n' "$CERT_INFO"
+
+          ACTUAL_SHA1=$(printf '%s\n' "$CERT_INFO" \
+            | sed -nE 's/.*certificate SHA-1 digest: ([[:xdigit:]:]+).*/\1/p' \
+            | head -n 1 \
+            | tr -d ':' \
+            | tr '[:upper:]' '[:lower:]')
+
+          if [ -z "$ACTUAL_SHA1" ]; then
+            echo "ERROR: SHA-1 sertifikat tidak ditemukan"
+            exit 1
+          fi
+
+          if [ "$ACTUAL_SHA1" != "$EXPECTED_SHA1" ]; then
+            echo "ERROR: SHA-1 sertifikat tidak cocok!"
+            echo "Build dihentikan."
+            exit 1
+          fi
+
+          echo "VERIFIKASI BERHASIL: SHA-1 cocok."
+
+      # Upload APK agar bisa diunduh dari GitHub Actions
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: buku-utang-warung-apk
+          path: build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error
+
+===== ANDROID PROJECT GENERATION =====
+34-          set -euo pipefail
+35-
+36-          mkdir -p "$RUNNER_TEMP/bak"
+37-          cp -r lib test pubspec.yaml "$RUNNER_TEMP/bak/"
+38-
+39:          flutter create --platforms=android \
+40-            --org id.warung \
+41-            --project-name buku_utang_warung .
+42-
+43-          rm -rf lib test pubspec.yaml
+44-          cp -r "$RUNNER_TEMP/bak/lib" lib
+45-          cp -r "$RUNNER_TEMP/bak/test" test
+46-          cp "$RUNNER_TEMP/bak/pubspec.yaml" pubspec.yaml
+47-
+
+===== ANDROID FILES IN REPOSITORY =====
+
+===== DIFF CHECK =====
+
+===== AUDIT END =====
