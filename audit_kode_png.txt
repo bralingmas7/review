@@ -1,0 +1,696 @@
+===== AUDIT KODE CETAK PNG =====
+Tue Nov 17 06:15:54 WIB 2026
+
+===== RECEIPT IMAGE SCREEN (FULL) =====
+     1	import 'dart:typed_data';
+     2	import 'dart:ui' as ui;
+     3	
+     4	import 'package:flutter/material.dart';
+     5	import 'package:flutter/rendering.dart';
+     6	import 'package:gal/gal.dart';
+     7	import 'package:share_plus/share_plus.dart';
+     8	
+     9	import '../models.dart';
+    10	import '../services/shop_message_settings.dart';
+    11	import '../utils.dart';
+    12	
+    13	class ReceiptImageScreen extends StatefulWidget {
+    14	  final Customer customer;
+    15	  final List<Txn> txns;
+    16	  final int balance;
+    17	  final ShopMessageSettings shopSettings;
+    18	  final bool settlement;
+    19	
+    20	  const ReceiptImageScreen({
+    21	    super.key,
+    22	    required this.customer,
+    23	    required this.txns,
+    24	    required this.balance,
+    25	    required this.shopSettings,
+    26	    required this.settlement,
+    27	  });
+    28	
+    29	  @override
+    30	  State<ReceiptImageScreen> createState() => _ReceiptImageScreenState();
+    31	}
+    32	
+    33	class _ReceiptImageScreenState extends State<ReceiptImageScreen> {
+    34	  final GlobalKey _imageKey = GlobalKey();
+    35	  Uint8List? _pngBytes;
+    36	  bool _working = false;
+    37	
+    38	  @override
+    39	  void initState() {
+    40	    super.initState();
+    41	    WidgetsBinding.instance.addPostFrameCallback((_) => _capture());
+    42	  }
+    43	
+    44	  String get _fileName {
+    45	    final safeName = widget.customer.name
+    46	        .trim()
+    47	        .replaceAll(RegExp(r'[^a-zA-Z0-9_-]+'), '_');
+    48	    final kind = widget.settlement ? 'pelunasan' : 'rekap';
+    49	    final now = DateTime.now();
+    50	    final stamp = '${now.year}${now.month.toString().padLeft(2, '0')}'
+    51	        '${now.day.toString().padLeft(2, '0')}_'
+    52	        '${now.hour.toString().padLeft(2, '0')}'
+    53	        '${now.minute.toString().padLeft(2, '0')}'
+    54	        '${now.second.toString().padLeft(2, '0')}';
+    55	    return '${kind}_${safeName}_$stamp.png';
+    56	  }
+    57	
+    58	  Future<void> _capture() async {
+    59	    try {
+    60	      await WidgetsBinding.instance.endOfFrame;
+    61	      final boundary = _imageKey.currentContext?.findRenderObject()
+    62	          as RenderRepaintBoundary?;
+    63	      if (boundary == null || !boundary.hasSize) {
+    64	        throw Exception('Pratinjau gambar belum siap.');
+    65	      }
+    66	
+    67	      final ui.Image image = await boundary.toImage(pixelRatio: 3);
+    68	      try {
+    69	        final data = await image.toByteData(format: ui.ImageByteFormat.png);
+    70	        if (data == null) throw Exception('Gagal membuat data PNG.');
+    71	        if (!mounted) return;
+    72	        setState(() => _pngBytes = data.buffer.asUint8List());
+    73	      } finally {
+    74	        image.dispose();
+    75	      }
+    76	    } catch (e) {
+    77	      if (mounted) {
+    78	        ScaffoldMessenger.of(context).showSnackBar(
+    79	          SnackBar(content: Text('Gagal menyiapkan PNG: $e')),
+    80	        );
+    81	      }
+    82	    }
+    83	  }
+    84	
+    85	  Future<void> _save() async {
+    86	    final bytes = _pngBytes;
+    87	    if (bytes == null || _working) return;
+    88	
+    89	    setState(() => _working = true);
+    90	    try {
+    91	      await Gal.putImageBytes(
+    92	        bytes,
+    93	        name: _fileName.replaceAll('.png', ''),
+    94	      );
+    95	      if (mounted) {
+    96	        ScaffoldMessenger.of(context).showSnackBar(
+    97	          const SnackBar(content: Text('PNG berhasil disimpan ke galeri.')),
+    98	        );
+    99	      }
+   100	    } catch (e) {
+   101	      if (mounted) {
+   102	        ScaffoldMessenger.of(context).showSnackBar(
+   103	          SnackBar(content: Text('Gagal menyimpan PNG: $e')),
+   104	        );
+   105	      }
+   106	    } finally {
+   107	      if (mounted) setState(() => _working = false);
+   108	    }
+   109	  }
+   110	
+   111	  Future<void> _share() async {
+   112	    final bytes = _pngBytes;
+   113	    if (bytes == null || _working) return;
+   114	
+   115	    setState(() => _working = true);
+   116	    try {
+   117	      await Share.shareXFiles([
+   118	        XFile.fromData(
+   119	          bytes,
+   120	          mimeType: 'image/png',
+   121	          name: _fileName,
+   122	        ),
+   123	      ]);
+   124	    } catch (e) {
+   125	      if (mounted) {
+   126	        ScaffoldMessenger.of(context).showSnackBar(
+   127	          SnackBar(content: Text('Gagal membagikan PNG: $e')),
+   128	        );
+   129	      }
+   130	    } finally {
+   131	      if (mounted) setState(() => _working = false);
+   132	    }
+   133	  }
+   134	
+   135	  @override
+   136	  Widget build(BuildContext context) {
+   137	    final sorted = [...widget.txns]..sort((a, b) {
+   138	        final byDate = a.date.compareTo(b.date);
+   139	        return byDate != 0 ? byDate : (a.id ?? 0).compareTo(b.id ?? 0);
+   140	      });
+   141	
+   142	    final totalDebt = sorted
+   143	        .where((t) => t.type == TxnType.utang)
+   144	        .fold<int>(0, (sum, t) => sum + t.amount);
+   145	    final totalPaid = sorted
+   146	        .where((t) => t.type == TxnType.bayar)
+   147	        .fold<int>(0, (sum, t) => sum + t.amount);
+   148	
+   149	    final settings = widget.shopSettings;
+   150	    final isSettlement = widget.settlement;
+   151	
+   152	    return Scaffold(
+   153	      appBar: AppBar(
+   154	        title: Text(isSettlement ? 'Bukti Pelunasan PNG' : 'Rekap PNG'),
+   155	      ),
+   156	      body: Column(
+   157	        children: [
+   158	          Expanded(
+   159	            child: SingleChildScrollView(
+   160	              padding: const EdgeInsets.all(12),
+   161	              child: Center(
+   162	                child: RepaintBoundary(
+   163	                  key: _imageKey,
+   164	                  child: Container(
+   165	                    width: 360,
+   166	                    padding: const EdgeInsets.all(22),
+   167	                    color: Colors.white,
+   168	                    child: DefaultTextStyle(
+   169	                      style: const TextStyle(
+   170	                        color: Colors.black87,
+   171	                        fontSize: 13,
+   172	                        height: 1.45,
+   173	                      ),
+   174	                      child: Column(
+   175	                        crossAxisAlignment: CrossAxisAlignment.stretch,
+   176	                        children: [
+   177	                          if (settings.header.trim().isNotEmpty) ...[
+   178	                            Text(
+   179	                              settings.header.trim(),
+   180	                              textAlign: TextAlign.center,
+   181	                            ),
+   182	                            const SizedBox(height: 12),
+   183	                          ],
+   184	                          if (settings.shopName.trim().isNotEmpty)
+   185	                            Text(
+   186	                              settings.shopName.trim(),
+   187	                              textAlign: TextAlign.center,
+   188	                              style: const TextStyle(
+   189	                                fontSize: 21,
+   190	                                fontWeight: FontWeight.bold,
+   191	                              ),
+   192	                            ),
+   193	                          const SizedBox(height: 12),
+   194	                          const Divider(color: Colors.black54, thickness: 1.5),
+   195	                          Text(
+   196	                            isSettlement ? 'BUKTI PELUNASAN' : 'REKAP TRANSAKSI',
+   197	                            textAlign: TextAlign.center,
+   198	                            style: const TextStyle(
+   199	                              fontSize: 18,
+   200	                              fontWeight: FontWeight.bold,
+   201	                              letterSpacing: 1,
+   202	                            ),
+   203	                          ),
+   204	                          const SizedBox(height: 14),
+   205	                          _infoRow('Nama pelanggan', widget.customer.name),
+   206	                          _infoRow('Tanggal cetak', tglJam(DateTime.now())),
+   207	                          if (widget.customer.phone.trim().isNotEmpty)
+   208	                            _infoRow('Telepon', widget.customer.phone),
+   209	                          const Divider(color: Colors.black26),
+   210	                          if (isSettlement) ...[
+   211	                            _infoRow('Status', 'LUNAS'),
+   212	                            _infoRow('Total utang', rupiah(totalDebt)),
+   213	                            _infoRow('Total pembayaran', rupiah(totalPaid)),
+   214	                          ] else ...[
+   215	                            _infoRow(
+   216	                              widget.balance < 0
+   217	                                  ? 'Piutang pelanggan'
+   218	                                  : 'Sisa utang',
+   219	                              rupiah(widget.balance),
+   220	                            ),
+   221	                            _infoRow('Jumlah transaksi', '${sorted.length}'),
+   222	                          ],
+   223	                          const SizedBox(height: 14),
+   224	                          const Text(
+   225	                            'RINCIAN TRANSAKSI',
+   226	                            style: TextStyle(fontWeight: FontWeight.bold),
+   227	                          ),
+   228	                          const Divider(color: Colors.black54),
+   229	                          if (sorted.isEmpty)
+   230	                            const Text('Belum ada transaksi.')
+   231	                          else
+   232	                            for (final txn in sorted)
+   233	                              Padding(
+   234	                                padding:
+   235	                                    const EdgeInsets.symmetric(vertical: 5),
+   236	                                child: Row(
+   237	                                  crossAxisAlignment: CrossAxisAlignment.start,
+   238	                                  children: [
+   239	                                    Expanded(
+   240	                                      child: Column(
+   241	                                        crossAxisAlignment:
+   242	                                            CrossAxisAlignment.start,
+   243	                                        children: [
+   244	                                          Text(
+   245	                                            txn.type == TxnType.utang
+   246	                                                ? 'UTANG'
+   247	                                                : 'PEMBAYARAN',
+   248	                                            style: const TextStyle(
+   249	                                              fontWeight: FontWeight.bold,
+   250	                                            ),
+   251	                                          ),
+   252	                                          Text(tglJam(txn.date)),
+   253	                                          if (txn.note.trim().isNotEmpty)
+   254	                                            Text(txn.note.trim()),
+   255	                                        ],
+   256	                                      ),
+   257	                                    ),
+   258	                                    const SizedBox(width: 8),
+   259	                                    Text(
+   260	                                      '${txn.type == TxnType.utang ? '+' : '-'}${rupiah(txn.amount)}',
+   261	                                      textAlign: TextAlign.right,
+   262	                                      style: const TextStyle(
+   263	                                        fontWeight: FontWeight.w600,
+   264	                                      ),
+   265	                                    ),
+   266	                                  ],
+   267	                                ),
+   268	                              ),
+   269	                          const Divider(color: Colors.black54),
+   270	                          if (isSettlement)
+   271	                            const Text(
+   272	                              'Pembayaran telah menyelesaikan siklus utang ini.',
+   273	                              textAlign: TextAlign.center,
+   274	                              style: TextStyle(fontWeight: FontWeight.bold),
+   275	                            )
+   276	                          else
+   277	                            Text(
+   278	                              widget.balance < 0
+   279	                                  ? 'Saldo kredit pelanggan: ${rupiah(widget.balance.abs())}'
+   280	                                  : widget.balance == 0
+   281	                                      ? 'Status: LUNAS'
+   282	                                      : 'Sisa utang: ${rupiah(widget.balance)}',
+   283	                              textAlign: TextAlign.right,
+   284	                              style: const TextStyle(
+   285	                                fontWeight: FontWeight.bold,
+   286	                                fontSize: 15,
+   287	                              ),
+   288	                            ),
+   289	                          const SizedBox(height: 18),
+   290	                          Text(
+   291	                            settings.footer.trim().isNotEmpty
+   292	                                ? settings.footer.trim()
+   293	                                : 'Terima kasih.',
+   294	                            textAlign: TextAlign.center,
+   295	                          ),
+   296	                          const SizedBox(height: 8),
+   297	                          const Text(
+   298	                            'Dicetak dari Buku Utang Warung',
+   299	                            textAlign: TextAlign.center,
+   300	                            style: TextStyle(
+   301	                              color: Colors.black54,
+   302	                              fontSize: 10,
+   303	                            ),
+   304	                          ),
+   305	                        ],
+   306	                      ),
+   307	                    ),
+   308	                  ),
+   309	                ),
+   310	              ),
+   311	            ),
+   312	          ),
+   313	          SafeArea(
+   314	            top: false,
+   315	            child: Padding(
+   316	              padding: const EdgeInsets.all(12),
+   317	              child: Row(
+   318	                children: [
+   319	                  Expanded(
+   320	                    child: OutlinedButton.icon(
+   321	                      onPressed: _pngBytes == null || _working ? null : _save,
+   322	                      icon: const Icon(Icons.save_alt),
+   323	                      label: const Text('Simpan PNG'),
+   324	                    ),
+   325	                  ),
+   326	                  const SizedBox(width: 10),
+   327	                  Expanded(
+   328	                    child: FilledButton.icon(
+   329	                      onPressed: _pngBytes == null || _working ? null : _share,
+   330	                      icon: const Icon(Icons.share),
+   331	                      label: const Text('Bagikan / Cetak'),
+   332	                    ),
+   333	                  ),
+   334	                ],
+   335	              ),
+   336	            ),
+   337	          ),
+   338	          if (_pngBytes == null)
+   339	            const LinearProgressIndicator(),
+   340	        ],
+   341	      ),
+   342	    );
+   343	  }
+   344	
+   345	  Widget _infoRow(String label, String value) {
+   346	    return Padding(
+   347	      padding: const EdgeInsets.symmetric(vertical: 3),
+   348	      child: Row(
+   349	        crossAxisAlignment: CrossAxisAlignment.start,
+   350	        children: [
+   351	          SizedBox(
+   352	            width: 112,
+   353	            child: Text(label),
+   354	          ),
+   355	          const Text(': '),
+   356	          Expanded(
+   357	            child: Text(
+   358	              value,
+   359	              style: const TextStyle(fontWeight: FontWeight.w600),
+   360	            ),
+   361	          ),
+   362	        ],
+   363	      ),
+   364	    );
+   365	  }
+   366	}
+
+===== INTEGRASI CUSTOMER SCREEN =====
+     1	import 'package:flutter/material.dart';
+     2	import 'package:flutter/services.dart';
+     3	import 'package:url_launcher/url_launcher.dart';
+     4	
+     5	import '../db.dart';
+     6	import '../dialogs.dart';
+     7	import '../models.dart';
+     8	import '../status_style.dart';
+     9	import '../utils.dart';
+    10	import '../services/shop_message_settings.dart';
+    11	import 'receipt_image_screen.dart';
+    12	
+    13	class CustomerScreen extends StatefulWidget {
+    14	  final int customerId;
+    15	  const CustomerScreen({super.key, required this.customerId});
+    16	
+    17	  @override
+    18	  State<CustomerScreen> createState() => _CustomerScreenState();
+    19	}
+    20	
+    21	class _CustomerScreenState extends State<CustomerScreen> {
+    22	  Customer? _customer;
+    23	  List<Txn> _txns = [];
+    24	  bool _loading = true;
+    25	
+    26	  @override
+    27	  void initState() {
+    28	    super.initState();
+    29	    _load();
+    30	  }
+    31	
+    32	  Future<void> _load() async {
+    33	    final db = AppDb.instance;
+    34	    final c = await db.customer(widget.customerId);
+    35	    final t = await db.txnsFor(widget.customerId);
+    36	    if (!mounted) return;
+    37	    if (c == null) {
+    38	      Navigator.pop(context);
+    39	      return;
+    40	    }
+    41	    setState(() {
+    42	      _customer = c;
+    43	      _txns = t;
+    44	      _loading = false;
+    45	    });
+    46	  }
+    47	
+    48	  void _snack(String msg) {
+    49	    ScaffoldMessenger.of(context)
+    50	      ..hideCurrentSnackBar()
+    51	      ..showSnackBar(SnackBar(content: Text(msg)));
+    52	  }
+    53	
+    54	  Future<void> _addTxn(TxnType type) async {
+    55	    final c = _customer!;
+    56	    final oldBalance = computeBalance(_txns);
+    57	
+    58	    final txn = await showTxnForm(
+    59	      context,
+    60	      customer: c,
+    61	      type: type,
+    62	      balance: oldBalance,
+    63	    );
+    64	    if (txn == null) return;
+    65	
+    66	    await AppDb.instance.insertTxn(txn);
+    67	    await _load();
+    68	
+    69	    if (!mounted) return;
+    70	
+    71	    final newBalance = computeBalance(_txns);
+    72	    _snack(type == TxnType.utang ? 'Utang dicatat' : 'Pembayaran dicatat');
+    73	
+    74	    if (type == TxnType.bayar && oldBalance > 0 && newBalance == 0) {
+    75	      await _sendSettlementReceipt();
+    76	    }
+    77	  }
+    78	
+    79	  Future<void> _sendSettlementReceipt() async {
+    80	    final c = _customer!;
+    81	    final cycle = latestClosedDebtCycle(_txns);
+    82	    if (cycle.isEmpty) return;
+    83	
+    84	    final send = await showDialog<bool>(
+    85	      context: context,
+    86	      builder: (ctx) => AlertDialog(
+    87	        title: const Text('Utang sudah lunas'),
+    88	        content: const Text(
+    89	          'Saldo pelanggan sudah lunas. Kirim bukti pelunasan '
+    90	          'beserta seluruh transaksi dalam siklus ini melalui WhatsApp?',
+    91	        ),
+    92	        actions: [
+    93	          TextButton(
+    94	            onPressed: () => Navigator.pop(ctx, false),
+    95	            child: const Text('Nanti'),
+    96	          ),
+    97	          FilledButton(
+    98	            onPressed: () => Navigator.pop(ctx, true),
+    99	            child: const Text('Kirim WhatsApp'),
+   100	          ),
+   101	        ],
+   102	      ),
+   103	    );
+   104	
+   105	    if (send != true || !mounted) return;
+   106	
+   107	    final messageSettings = await ShopMessageSettings.load();
+   108	    final msg = buildSettlementReceipt(
+   109	      name: c.name,
+   110	      txns: cycle,
+   111	      shopName: messageSettings.shopName,
+   112	      header: messageSettings.header,
+   113	      footer: messageSettings.footer,
+   114	    );
+   115	    var opened = false;
+   116	
+   117	    try {
+   118	      opened = await launchUrl(
+   119	        waUri(c.phone, msg),
+   120	        mode: LaunchMode.externalApplication,
+   121	      );
+   122	    } catch (_) {
+   123	      opened = false;
+   124	    }
+   125	
+   126	    if (!opened && mounted) {
+   127	      await Clipboard.setData(ClipboardData(text: msg));
+   128	      _snack('WhatsApp tidak bisa dibuka. Bukti pelunasan disalin.');
+   129	    }
+   130	  }
+   131	
+   132	  Future<void> _deleteTxn(Txn t) async {
+   133	    final ok = await confirmDialog(
+   134	      context,
+   135	      title: 'Hapus catatan?',
+   136	      message: '${t.type == TxnType.utang ? 'Utang' : 'Pembayaran'} '
+   137	          '${rupiah(t.amount)} tanggal ${tglJam(t.date)} akan dihapus.',
+   138	    );
+   139	    if (!ok) return;
+   140	    await AppDb.instance.deleteTxn(t.id!);
+   141	    await _load();
+   142	  }
+   143	
+   144	  Future<void> _tagih() async {
+   145	    final c = _customer!;
+   146	    final balance = computeBalance(_txns);
+   147	    if (balance <= 0) {
+   148	      _snack('Tidak ada utang yang perlu ditagih.');
+   149	      return;
+   150	    }
+   151	
+   152	    final messageSettings = await ShopMessageSettings.load();
+   153	    final cycle = activeDebtCycle(_txns);
+   154	    final msg = buildReminder(
+   155	      name: c.name,
+   156	      balance: balance,
+   157	      due: nextDueDate(cycle),
+   158	      txns: cycle,
+   159	      shopName: messageSettings.shopName,
+   160	      header: messageSettings.header,
+   161	      footer: messageSettings.footer,
+   162	    );
+   163	    bool ok;
+   164	    try {
+   165	      ok = await launchUrl(waUri(c.phone, msg),
+   166	          mode: LaunchMode.externalApplication);
+   167	    } catch (_) {
+   168	      ok = false;
+   169	    }
+   170	    if (!ok && mounted) {
+   171	      await Clipboard.setData(ClipboardData(text: msg));
+   172	      _snack('WhatsApp tidak bisa dibuka. Pesan disalin, tempel manual ya.');
+   173	    }
+   174	  }
+   175	
+   176	  Future<void> _copyRecap() async {
+   177	    final c = _customer!;
+   178	    await Clipboard.setData(ClipboardData(
+   179	      text: buildRecap(
+   180	        name: c.name,
+   181	        balance: computeBalance(_txns),
+   182	        txns: _txns,
+   183	      ),
+   184	    ));
+   185	    if (mounted) _snack('Rekap disalin');
+   186	  }
+   187	
+   188	  Future<void> _openPng({required bool settlement}) async {
+   189	    final c = _customer!;
+   190	    final selectedTxns =
+   191	        settlement ? latestClosedDebtCycle(_txns) : List<Txn>.from(_txns);
+   192	
+   193	    if (settlement && selectedTxns.isEmpty) {
+   194	      _snack('Belum ada siklus utang yang lunas.');
+   195	      return;
+   196	    }
+   197	
+   198	    final settings = await ShopMessageSettings.load();
+   199	    if (!mounted) return;
+   200	
+   201	    await Navigator.push<void>(
+   202	      context,
+   203	      MaterialPageRoute(
+   204	        builder: (_) => ReceiptImageScreen(
+   205	          customer: c,
+   206	          txns: selectedTxns,
+   207	          balance: computeBalance(_txns),
+   208	          shopSettings: settings,
+   209	          settlement: settlement,
+   210	        ),
+   211	      ),
+   212	    );
+   213	  }
+   214	
+   215	  Future<void> _edit() async {
+   216	    final updated = await showCustomerForm(context, existing: _customer);
+   217	    if (updated == null) return;
+   218	    await AppDb.instance.updateCustomer(updated);
+   219	    await _load();
+   220	  }
+   221	
+   222	  Future<void> _deleteCustomer() async {
+   223	    final c = _customer!;
+   224	    final ok = await confirmDialog(
+   225	      context,
+   226	      title: 'Hapus pelanggan?',
+   227	      message:
+   228	          '${c.name} beserta semua catatan utangnya akan dihapus permanen.',
+   229	    );
+   230	    if (!ok) return;
+   231	    await AppDb.instance.deleteCustomer(c.id!);
+   232	    if (mounted) Navigator.pop(context);
+   233	  }
+   234	
+   235	  @override
+   236	  Widget build(BuildContext context) {
+   237	    if (_loading || _customer == null) {
+   238	      return Scaffold(
+   239	        appBar: AppBar(),
+   240	        body: const Center(child: CircularProgressIndicator()),
+   241	      );
+   242	    }
+   243	
+   244	    final c = _customer!;
+   245	    final summary = CustomerSummary(
+   246	      customer: c,
+   247	      balance: computeBalance(_txns),
+   248	      nextDue: nextDueDate(_txns),
+   249	    );
+   250	    final history = [..._txns]..sort((a, b) {
+   251	        final byDate = b.date.compareTo(a.date);
+   252	        return byDate != 0 ? byDate : (b.id ?? 0).compareTo(a.id ?? 0);
+   253	      });
+   254	
+   255	    return Scaffold(
+   256	      appBar: AppBar(
+   257	        title: Text(c.name),
+   258	        actions: [
+   259	          PopupMenuButton<String>(
+   260	            onSelected: (v) {
+   261	              switch (v) {
+   262	                case 'edit':
+   263	                  _edit();
+   264	                case 'recap':
+   265	                  _copyRecap();
+   266	                case 'recap_png':
+   267	                  _openPng(settlement: false);
+   268	                case 'settlement_png':
+   269	                  _openPng(settlement: true);
+   270	                case 'delete':
+   271	                  _deleteCustomer();
+   272	              }
+   273	            },
+   274	            itemBuilder: (_) => [
+   275	              const PopupMenuItem(value: 'edit', child: Text('Ubah data')),
+   276	              const PopupMenuItem(value: 'recap', child: Text('Salin rekap')),
+   277	              const PopupMenuItem(
+   278	                value: 'recap_png',
+   279	                child: Text('Simpan rekap sebagai PNG'),
+   280	              ),
+   281	              if (latestClosedDebtCycle(_txns).isNotEmpty)
+   282	                const PopupMenuItem(
+   283	                  value: 'settlement_png',
+   284	                  child: Text('Bukti pelunasan PNG'),
+   285	                ),
+   286	              const PopupMenuItem(value: 'delete', child: Text('Hapus pelanggan')),
+   287	            ],
+   288	          ),
+   289	        ],
+   290	      ),
+   291	      body: ListView.builder(
+   292	        padding: const EdgeInsets.only(bottom: 32),
+   293	        itemCount: history.length + 1,
+   294	        itemBuilder: (_, i) {
+   295	          if (i == 0) return _Header(summary: summary, onAdd: _addTxn, onTagih: _tagih);
+   296	          final t = history[i - 1];
+   297	          return _TxnTile(txn: t, onLongPress: () => _deleteTxn(t));
+   298	        },
+   299	      ),
+   300	    );
+   301	  }
+   302	}
+   303	
+   304	class _Header extends StatelessWidget {
+   305	  final CustomerSummary summary;
+   306	  final Future<void> Function(TxnType) onAdd;
+   307	  final VoidCallback onTagih;
+   308	  const _Header({
+   309	    required this.summary,
+   310	    required this.onAdd,
+
+===== DEPENDENCIES PUBSPEC =====
+22-  flutter_secure_storage: ^11.2.0
+23-  connectivity_plus: ^7.3.2
+24:  gal: ^2.3.3
+25:  share_plus: ^10.1.4
+26-
+27-dev_dependencies:
+28-  flutter_test:
+
+===== LOCKFILE VERSIONS =====
+grep: pubspec.lock: No such file or directory
+
+===== PATCH CHECK =====
