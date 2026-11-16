@@ -1,57 +1,7 @@
-===== AUDIT GOOGLE SESSION PATCH =====
-Mon Nov 16 23:34:02 WIB 2026
+===== GOOGLE LIGHTWEIGHT RESTORE PATCH =====
+Mon Nov 16 23:34:47 WIB 2026
 
-===== GOOGLE DRIVE SERVICE: RESTORE DAN INIT =====
-27-
-28-  final GoogleSignIn _google = GoogleSignIn.instance;
-29-  final SharedPreferencesAsync _preferences = SharedPreferencesAsync();
-30-  static const String _savedAccountEmailKey = 'google_drive_saved_email';
-31-  Future<void>? _initialization;
-32-  GoogleSignInAccount? _account;
-33-  StreamSubscription<GoogleSignInAuthenticationEvent>? _authSubscription;
-34-
-35-  final StreamController<GoogleSignInAccount?> _accountChanges =
-36-      StreamController<GoogleSignInAccount?>.broadcast();
-37-
-38-  GoogleSignInAccount? get account => _account;
-39-  Stream<GoogleSignInAccount?> get accountChanges =>
-40-      _accountChanges.stream;
-41-
-42-  void _setAccount(GoogleSignInAccount? account) {
-43-    _account = account;
-44-    _accountChanges.add(account);
-45-  }
-46-
-47:  Future<void> initialize() {
-48:    return _initialization ??= _initialize();
-49-  }
-50-
-51:  Future<void> _initialize() async {
-52-    await _google.initialize(serverClientId: _serverClientId);
-53-
-54:    _authSubscription ??= _google.authenticationEvents.listen(
-55-      (event) {
-56-        if (event is GoogleSignInAuthenticationEventSignIn) {
-57-          _restoreDiagnostic = 'AUTH_EVENT_SIGN_IN';
-58-          _setAccount(event.user);
-59-        } else if (event is GoogleSignInAuthenticationEventSignOut) {
-60-          _restoreDiagnostic = 'AUTH_EVENT_SIGN_OUT';
-61-          _setAccount(null);
-62-        }
-63-      },
-64-      onError: (Object error, StackTrace stack) {
-65-        _accountChanges.addError(error, stack);
-66-      },
-67-    );
-68-  }
-69-
-70-  String _restoreDiagnostic = 'BELUM_DIPERIKSA';
-71-
-72-  String get restoreDiagnostic => _restoreDiagnostic;
-73-
-74-  Future<String?> loadSavedAccountEmail() =>
-75-      _preferences.getString(_savedAccountEmailKey);
-76-
+===== VALIDASI KONDISI AWAL =====
 77:  Future<GoogleSignInAccount?> restoreAccount() async {
 78-    _restoreDiagnostic = 'INITIALIZING';
 79-    await initialize();
@@ -69,443 +19,147 @@ Mon Nov 16 23:34:02 WIB 2026
 91-    Future<T> Function(drive.DriveApi api) action,
 92-  ) async {
 93-    final currentAccount = _account;
-94-
-95-    if (currentAccount == null) {
-96-      throw StateError(
-97-        'Sesi Google belum aktif. Hubungkan ulang Google Drive terlebih dahulu.',
-98-      );
-99-    }
-100-
-101-    final authorizationClient = currentAccount.authorizationClient;
-102-    final authorization =
-103-        await authorizationClient.authorizationForScopes(_scopes) ??
-104-        await authorizationClient.authorizeScopes(_scopes);
-105-
-106-    final client = authorization.authClient(scopes: _scopes);
-107-
-108-    try {
-109-      final api = drive.DriveApi(client);
-110-      return await action(api);
-111-    } finally {
-112-      client.close();
-113-    }
-114-  }
-115-
-116-  void _validateEncryptedFile(List<int> bytes) {
-117-    if (bytes.isEmpty || bytes.length > _maximumBackupBytes) {
-118-      throw const FormatException('Ukuran backup tidak valid.');
-119-    }
-120-
-121-    try {
-122-      final decoded = jsonDecode(utf8.decode(bytes));
-123-
-124-      if (decoded is! Map<String, dynamic> ||
-125-          decoded['format'] != _backupFormat ||
-126-          decoded['version'] != _backupVersion ||
-127-          decoded['cipher'] != 'AES-256-GCM' ||
-128-          decoded['kdf'] != 'PBKDF2-HMAC-SHA256' ||
-129-          decoded['iterations'] != 310000 ||
-130-          decoded['salt'] is! String ||
-131-          decoded['nonce'] is! String ||
-132-          decoded['ciphertext'] is! String ||
-133-          decoded['mac'] is! String) {
-134-        throw const FormatException(
-135-          'File bukan backup terenkripsi Buku Utang Warung.',
-136-        );
-137-      }
-138-    } on FormatException {
-139-      rethrow;
-140-    } catch (_) {
-141-      throw const FormatException('Isi file backup tidak valid.');
-142-    }
-143-  }
-144-
-145-  Future<drive.File> uploadEncryptedBackup(
-146-    List<int> encryptedBytes,
-147-  ) async {
-148-    _validateEncryptedFile(encryptedBytes);
-149-
-150-    final timestamp = DateTime.now().toUtc().millisecondsSinceEpoch;
-151-
-152-    return _withDriveApi((api) async {
-153-      final metadata = drive.File()
-154-        ..name = 'backup_buku_utang_$timestamp.buwbackup'
-155-        ..mimeType = 'application/octet-stream'
-156-        ..appProperties = {
-157-          'app': 'buku_utang_warung',
-158-          'format': 'encrypted_backup',
-159-          'version': '1',
-160-        };
-161-
-162-      final media = drive.Media(
-163-        Stream<List<int>>.value(encryptedBytes),
-164-        encryptedBytes.length,
-165-      );
-166-
-167-      final uploaded = await api.files.create(
+BACKUP VERIFIED: /data/data/com.termux/files/home/buku/backup_google_lightweight_restore_20261116_233447
+PATCH BERHASIL: restoreAccount memakai lightweight authentication.
 
-===== GOOGLE DRIVE SERVICE: LOGIN DAN LOGOUT =====
-225-
-226-        if (builder.length > _maximumBackupBytes) {
-227-          throw const FormatException(
-228-            'File backup melebihi batas ukuran 100 MB.',
-229-          );
-230-        }
-231-      }
-232-
-233-      final bytes = builder.takeBytes();
-234-      _validateEncryptedFile(bytes);
-235-
-236-      return bytes;
-237-    });
-238-  }
-239-
-240:  Future<String> connectAndTest() async {
-241-    await initialize();
-242-
-243-    if (!_google.supportsAuthenticate()) {
-244-      throw Exception('Metode login tidak didukung pada perangkat ini.');
-245-    }
-246-
-247-    final account = await _google.authenticate();
-248-
-249-    final authorizationClient = account.authorizationClient;
-250-    final authorization =
-251-        await authorizationClient.authorizationForScopes(_scopes) ??
-252-        await authorizationClient.authorizeScopes(_scopes);
-253-
-254-    final client = authorization.authClient(scopes: _scopes);
-255-
-256-    try {
-257-      final api = drive.DriveApi(client);
-258-
-259-      await api.files.list(
-260-        pageSize: 1,
-261-        $fields: 'files(id,name)',
-262-      );
-263-    } finally {
-264-      client.close();
-265-    }
-266-
-267-    _setAccount(account);
-268-    await _preferences.setString(_savedAccountEmailKey, account.email);
-269-    _restoreDiagnostic = 'SESSION_ACTIVE';
-270-
-271-    return account.email;
-272-  }
-273-
-274:  Future<void> signOut() async {
-275-    await initialize();
-276:    await _google.signOut();
-277-    await _preferences.remove(_savedAccountEmailKey);
-278-    _setAccount(null);
-279-    _restoreDiagnostic = 'SIGNED_OUT';
-280-  }
-281-
-282:  Future<String> switchAccount() async {
-283:    await signOut();
-284:    return connectAndTest();
-285-  }
-286-}
-
-===== PATCH LAMA =====
-from pathlib import Path
-from datetime import datetime
-import shutil, hashlib, os, sys
-
-root = Path.cwd()
-pub = root / "pubspec.yaml"
-svc = root / "lib/services/google_drive_service.dart"
-ui = root / "lib/screens/settings_screen.dart"
-targets = [pub, svc, ui]
-
-def fail(msg):
-    print("GAGAL:", msg)
-    sys.exit(1)
-
-for p in targets:
-    if not p.is_file():
-        fail(f"File tidak ditemukan: {p}")
-
-data = {p: p.read_text() for p in targets}
-changes = []
-
-def rep(p, old, new, label):
-    n = data[p].count(old)
-    if n != 1:
-        fail(f"{label}: pola ditemukan {n} kali, bukan 1")
-    data[p] = data[p].replace(old, new, 1)
-    changes.append(label)
-
-# pubspec
-rep(pub,
-    "  cryptography: ^2.7.0\n",
-    "  cryptography: ^2.7.0\n  shared_preferences: ^2.5.3\n",
-    "Dependency shared_preferences")
-
-# Google Drive service
-rep(svc,
-    "import 'package:googleapis/drive/v3.dart' as drive;\n",
-    "import 'package:googleapis/drive/v3.dart' as drive;\n"
-    "import 'package:shared_preferences/shared_preferences.dart';\n",
-    "Import shared_preferences")
-
-rep(svc,
-    "  final GoogleSignIn _google = GoogleSignIn.instance;\n",
-    "  final GoogleSignIn _google = GoogleSignIn.instance;\n"
-    "  final SharedPreferencesAsync _preferences = SharedPreferencesAsync();\n"
-    "  static const String _savedAccountEmailKey = 'google_drive_saved_email';\n",
-    "Penyimpanan email")
-
-rep(svc,
-    "  String get restoreDiagnostic => _restoreDiagnostic;\n",
-    "  String get restoreDiagnostic => _restoreDiagnostic;\n\n"
-    "  Future<String?> loadSavedAccountEmail() =>\n"
-    "      _preferences.getString(_savedAccountEmailKey);\n",
-    "Getter email tersimpan")
-
-old = """  Future<GoogleSignInAccount?> restoreAccount() async {
-    _restoreDiagnostic = 'INITIALIZING';
-    await initialize();
-
-    if (_account != null) {
-      _restoreDiagnostic = 'ACCOUNT_ALREADY_AVAILABLE';
-      return _account;
-    }
-
-    _restoreDiagnostic = 'ATTEMPTING_LIGHTWEIGHT_AUTH';
-
-    try {
-      final attempt = _google.attemptLightweightAuthentication(
-        reportAllExceptions: true,
-      );
-
-      if (attempt == null) {
-        _restoreDiagnostic = 'NO_FUTURE_RETURNED';
-        return null;
-      }
-
-      final restored = await attempt;
-
-      if (restored == null) {
-        _restoreDiagnostic = 'FUTURE_RETURNED_NULL';
-        return _account;
-      }
-
-      _setAccount(restored);
-      _restoreDiagnostic = 'LIGHTWEIGHT_RESTORED';
-      return _account;
-    } catch (e) {
-      _restoreDiagnostic = 'ERROR ${e.runtimeType}: $e';
-      rethrow;
-    }
-  }
-"""
-new = """  Future<GoogleSignInAccount?> restoreAccount() async {
-    _restoreDiagnostic = 'INITIALIZING';
-    await initialize();
-
-    if (_account != null) {
-      _restoreDiagnostic = 'SESSION_ACTIVE';
-      return _account;
-    }
-
-    _restoreDiagnostic = 'NO_ACTIVE_SESSION';
-    return null;
-  }
-"""
-rep(svc, old, new, "Restore tanpa picker otomatis")
-
-rep(svc,
-    """    final currentAccount = await restoreAccount();
-
-    if (currentAccount == null) {
-      throw StateError('Hubungkan akun Google Drive terlebih dahulu.');
-    }
-""",
-    """    final currentAccount = _account;
-
-    if (currentAccount == null) {
-      throw StateError(
-        'Sesi Google belum aktif. Hubungkan ulang Google Drive terlebih dahulu.',
-      );
-    }
-""",
-    "Pemeriksaan sesi Drive")
-
-rep(svc,
-    """    final account = await _google.authenticate();
-    _setAccount(account);
-
-    final authorizationClient = account.authorizationClient;
-""",
-    """    final account = await _google.authenticate();
-
-    final authorizationClient = account.authorizationClient;
-""",
-    "Set account setelah tes Drive")
-
-rep(svc,
-    """    } finally {
-      client.close();
-    }
-
-    return account.email;
-  }
-
-  Future<void> signOut() async {
-    await initialize();
-    await _google.signOut();
-    _setAccount(null);
-  }
-""",
-    """    } finally {
-      client.close();
-    }
-
-    _setAccount(account);
-    await _preferences.setString(_savedAccountEmailKey, account.email);
-    _restoreDiagnostic = 'SESSION_ACTIVE';
-
-    return account.email;
-  }
-
-  Future<void> signOut() async {
-    await initialize();
-    await _google.signOut();
-    await _preferences.remove(_savedAccountEmailKey);
-    _setAccount(null);
-    _restoreDiagnostic = 'SIGNED_OUT';
-  }
-""",
-    "Simpan email dan bersihkan saat logout")
-
-# Settings screen
-rep(ui,
-    """      final account =
-          await GoogleDriveService.instance.restoreAccount();
-
-      if (!mounted) return;
-
-      setState(() {
-        _googleEmail = account?.email;
-        _googleRestoreStatus =
-            GoogleDriveService.instance.restoreDiagnostic;
-      });
-""",
-    """      final google = GoogleDriveService.instance;
-      final account = await google.restoreAccount();
-      final savedEmail = await google.loadSavedAccountEmail();
-
-      if (!mounted) return;
-
-      setState(() {
-        _googleEmail = account?.email ?? savedEmail;
-        _googleRestoreStatus = account != null
-            ? 'SESI_AKTIF'
-            : savedEmail != null
-                ? 'IDENTITAS_TERSIMPAN_SESI_BELUM_AKTIF'
-                : 'BELUM_TERHUBUNG';
-      });
-""",
-    "Restore email di Settings")
-
-rep(ui,
-    "title: const Text('Akun terhubung'),",
-    "title: const Text('Akun Google terakhir digunakan'),",
-    "Label email")
-
-rep(ui,
-    """                      subtitle: Text(_googleEmail!),
-                    ),
-                    SizedBox(
-                      width: double.infinity,
-                      child: OutlinedButton.icon(
-                        onPressed: _busy ? null : _switchGoogle,
-""",
-    """                      subtitle: Text(_googleEmail!),
-                    ),
-                    if (GoogleDriveService.instance.account == null) ...[
-                      const SizedBox(height: 8),
-                      SizedBox(
-                        width: double.infinity,
-                        child: FilledButton.icon(
-                          onPressed: _busy ? null : _connectGoogle,
-                          icon: const Icon(Icons.login),
-                          label: const Text('Hubungkan ulang sesi Google'),
-                        ),
-                      ),
-                    ],
-                    SizedBox(
-                      width: double.infinity,
-                      child: OutlinedButton.icon(
-                        onPressed: _busy ? null : _switchGoogle,
-""",
-    "Tombol reconnect")
-
-rep(ui,
-    "onPressed: _busy ? null : _cloudBackup,",
-    "onPressed: _busy || GoogleDriveService.instance.account == null\n"
-    "                            ? null\n"
-    "                            : _cloudBackup,",
-    "Nonaktifkan backup saat sesi mati")
-
-rep(ui,
-    "onPressed: _busy ? null : _cloudRestore,",
-    "onPressed: _busy || GoogleDriveService.instance.account == null\n"
-    "                            ? null\n"
-    "                            : _cloudRestore,",
-    "Nonaktifkan restore saat sesi mati")
-
-# Backup semua sumber dengan path relatif dan verifikasi hash.
-stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-backup = root / f"backup_google_session_fix_{stamp}"
-
-for p in targets:
-    dst = backup / p.relative_to(root)
-    dst.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(p, dst)
-
-for p in targets:
-    dst = backup / p.relative_to(root)
-    if hashlib.sha256(p.read_bytes()).digest() != hashlib.sha256(dst.read_bytes()).digest():
-        fail(f"Verifikasi backup gagal: {p}")
-
-print("BACKUP VERIFIED:", backup)
-
-# Tulis file sementara dulu, lalu ganti sumber.
-staged = []
-try:
-    for p, content in data.items():
-        tmp = p.with_name(p.name + ".patch_tmp")
-        tmp.write_text(content)
-        staged.append((p, tmp))
-    for p, tmp in staged:
-        os.replace(tmp, p)
-except Exception:
-    for p, tmp in staged:
-        if tmp.exists():
-            tmp.unlink()
-    fail("Gagal menulis patch. Periksa file sumber dan backup.")
-
-print("PATCH BERHASIL")
-for c in changes:
-    print("-", c)
-
-===== RIWAYAT PERUBAHAN SERVICE =====
-
-===== VERSI PACKAGE GOOGLE SIGN IN =====
-15-  file_picker: ^12.3.0
-16-
-17:  google_sign_in: ^7.2.0
-18-  googleapis: ^19.0.0
-19-  extension_google_sign_in_as_googleapis_auth: ^3.0.0
-20-  cryptography: ^2.7.0
-21-  shared_preferences: 2.3.1
-
-===== STATUS FILE =====
-?? patch_google_session.py
+===== HASIL RESTORE ACCOUNT =====
+77:  Future<GoogleSignInAccount?> restoreAccount() async {
+78-    _restoreDiagnostic = 'INITIALIZING';
+79-    await initialize();
+80-
+81-    if (_account != null) {
+82-      _restoreDiagnostic = 'SESSION_ACTIVE';
+83-      return _account;
+84-    }
+85-
+86-    _restoreDiagnostic = 'ATTEMPTING_LIGHTWEIGHT_AUTH';
+87-
+88-    try {
+89-      final attempt = _google.attemptLightweightAuthentication(
+90-        reportAllExceptions: true,
+91-      );
+92-
+93-      if (attempt == null) {
+94-        _restoreDiagnostic = 'LIGHTWEIGHT_NOT_AVAILABLE';
+95-        return null;
+96-      }
+97-
+98-      final restored = await attempt;
+99-
+100-      if (restored == null) {
+101-        _restoreDiagnostic = 'NO_ACTIVE_SESSION';
+102-        return _account;
+103-      }
+104-
+105-      _setAccount(restored);
+106-      _restoreDiagnostic = 'LIGHTWEIGHT_RESTORED';
+107-      return restored;
+108-    } catch (e) {
+109-      _restoreDiagnostic = 'LIGHTWEIGHT_ERROR: ${e.runtimeType}';
+110-      return null;
+111-    }
+112-  }
+113-
+114-  Future<T> _withDriveApi<T>(
+115-    Future<T> Function(drive.DriveApi api) action,
 
 ===== DIFF CHECK =====
 
-===== AUDIT SELESAI =====
+===== DIFF FILE =====
+diff --git a/lib/services/google_drive_service.dart b/lib/services/google_drive_service.dart
+index d0669fe..e928688 100644
+--- a/lib/services/google_drive_service.dart
++++ b/lib/services/google_drive_service.dart
+@@ -83,8 +83,32 @@ class GoogleDriveService {
+       return _account;
+     }
+ 
+-    _restoreDiagnostic = 'NO_ACTIVE_SESSION';
+-    return null;
++    _restoreDiagnostic = 'ATTEMPTING_LIGHTWEIGHT_AUTH';
++
++    try {
++      final attempt = _google.attemptLightweightAuthentication(
++        reportAllExceptions: true,
++      );
++
++      if (attempt == null) {
++        _restoreDiagnostic = 'LIGHTWEIGHT_NOT_AVAILABLE';
++        return null;
++      }
++
++      final restored = await attempt;
++
++      if (restored == null) {
++        _restoreDiagnostic = 'NO_ACTIVE_SESSION';
++        return _account;
++      }
++
++      _setAccount(restored);
++      _restoreDiagnostic = 'LIGHTWEIGHT_RESTORED';
++      return restored;
++    } catch (e) {
++      _restoreDiagnostic = 'LIGHTWEIGHT_ERROR: ${e.runtimeType}';
++      return null;
++    }
+   }
+ 
+   Future<T> _withDriveApi<T>(
+
+===== STATUS =====
+ M lib/models.dart
+ M lib/screens/customer_screen.dart
+ M lib/screens/home_screen.dart
+ M lib/screens/settings_screen.dart
+ M lib/services/backup_status.dart
+ M lib/services/google_drive_service.dart
+ M lib/status_style.dart
+ M lib/utils.dart
+ M lib/widgets/backup_indicator.dart
+?? add_backup_indicator.sh
+?? backup_app_lock_integrity_20261116_210514/
+?? backup_app_lock_recovery_20261116_210009/
+?? backup_app_lock_safe_20261116_205501/
+?? backup_app_lock_safe_20261116_205635/
+?? backup_app_lock_safe_20261116_205712/
+?? backup_app_lock_storage_20261116_211528/
+?? backup_backup_status_race_20261116_231910/
+?? backup_before_revert_lightweight_20261115_133121/
+?? backup_cloud_reconnect_20261115_133235/
+?? backup_diagnostik_google_20261115_111942/
+?? backup_fix_google_import_20261115_104148/
+?? backup_google_lightweight_restore_20261116_233447/
+?? backup_google_login_20261114_185251/
+?? backup_google_restore_20261115_132224/
+?? backup_google_session_20261115_102650/
+?? backup_google_session_fix_20261115_123805/
+?? backup_google_session_fix_20261115_124655/
+?? backup_guard_whatsapp_20261116_230413/
+?? backup_guard_whatsapp_20261116_230532/
+?? backup_guard_whatsapp_v2_20261116_230720/
+?? backup_listener_google_20261115_125040/
+?? backup_pengaturan_warung_20261116_222928/
+?? backup_remove_app_lock_20261116_213512/
+?? backup_remove_app_lock_20261116_213908/
+?? backup_saldo_piutang_20261116_221958/
+?? backup_sebelum_cloud_ui_20261114_225058/
+?? backup_sebelum_cloud_ui_20261114_225846/
+?? backup_sebelum_fix_sqlite_20261114_231957/
+?? backup_sebelum_google_20261114_184301/
+?? backup_sebelum_integrasi_drive_20261114_221515/
+?? backup_sebelum_pin_ffi_20261114_230953/
+?? backup_sebelum_pin_shared_preferences_20261115_124930/
+?? backup_sebelum_settings_20261114_164203/
+?? backup_sebelum_test_restore_20261114_230544/
+?? backup_sebelum_update_siklus/
+?? backup_sebelum_whatsapp_gambar_20261116_221203/
+?? backup_settings_warung_ui_20261116_223241/
+?? backup_status_google_20261114_192221/
+?? backup_whatsapp_newline_20261116_225847/
+?? fix_diag.sh
+?? fix_google_session.sh
+?? fix_ux.sh
+?? lib/services/shop_message_settings.dart
+?? patch_google_session.py
+?? patchv3.py
+?? tambah_fitur.sh
