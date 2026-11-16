@@ -1,0 +1,416 @@
+===== SERVICE PENGATURAN WARUNG =====
+import 'package:shared_preferences/shared_preferences.dart';
+
+class ShopMessageSettings {
+  const ShopMessageSettings({
+    this.shopName = '',
+    this.header = '',
+    this.footer = '',
+  });
+
+  final String shopName;
+  final String header;
+  final String footer;
+
+  static const _nameKey = 'shop_message_name';
+  static const _headerKey = 'shop_message_header';
+  static const _footerKey = 'shop_message_footer';
+
+  static Future<ShopMessageSettings> load() async {
+    final prefs = SharedPreferencesAsync();
+    return ShopMessageSettings(
+      shopName: await prefs.getString(_nameKey) ?? '',
+      header: await prefs.getString(_headerKey) ?? '',
+      footer: await prefs.getString(_footerKey) ?? '',
+    );
+  }
+
+  Future<void> save() async {
+    final prefs = SharedPreferencesAsync();
+    await prefs.setString(_nameKey, shopName.trim());
+    await prefs.setString(_headerKey, header.trim());
+    await prefs.setString(_footerKey, footer.trim());
+  }
+}
+===== DIFF UTILS =====
+diff --git a/lib/utils.dart b/lib/utils.dart
+index d7e9613..196d4da 100644
+--- a/lib/utils.dart
++++ b/lib/utils.dart
+@@ -31,6 +31,8 @@ String tgl(DateTime d) => '${d.day} ${_bulan[d.month - 1]} ${d.year}';
+ String statusText(CustomerSummary s, [DateTime? now]) {
+   final today = dateOnly(now ?? DateTime.now());
+   switch (s.status(now)) {
++    case DebtStatus.piutang:
++      return 'Piutang pelanggan';
+     case DebtStatus.lunas:
+       return 'Lunas';
+     case DebtStatus.telat:
+@@ -78,20 +80,41 @@ String buildReminder({
+   required int balance,
+   DateTime? due,
+   required List<Txn> txns,
++  String shopName = '',
++  String header = '',
++  String footer = '',
+ }) {
+-  final b = StringBuffer()
++  final b = StringBuffer();
++
++  if (header.trim().isNotEmpty) {
++    b.writeln(header.trim());
++    b.writeln('');
++  }
++  if (shopName.trim().isNotEmpty) {
++    b.writeln('*${shopName.trim()}*');
++  }
++
++  b
+     ..writeln('Halo $name, mohon maaf mengganggu 🙏')
+     ..writeln(
+-        'Ini pengingat ramah dari warung: sisa utang Anda saat ini ${rupiah(balance)}.');
++      'Ini pengingat ramah dari warung: sisa utang Anda saat ini '
++      '*${rupiah(balance.abs())}*.',
++    );
++
+   if (due != null) b.writeln('Jatuh tempo: ${tgl(due)}.');
++
+   final recent = _newestFirst(txns);
+   if (recent.isNotEmpty) {
+-    b.writeln('\nRincian terakhir:');
++    b.writeln('\\nRincian siklus tagihan aktif:');
+     for (final t in recent) {
+       b.writeln('- ${_line(t)}');
+     }
+   }
+-  b.write('\nKalau sudah ada rezekinya, ditunggu ya. Terima kasih banyak!');
++
++  final closing = footer.trim();
++  b.write(
++    '\\n${closing.isNotEmpty ? closing : 'Kalau sudah ada rezekinya, ditunggu ya. Terima kasih banyak!'}',
++  );
+   return b.toString();
+ }
+ 
+@@ -99,6 +122,9 @@ String buildReminder({
+ String buildSettlementReceipt({
+   required String name,
+   required List<Txn> txns,
++  String shopName = '',
++  String header = '',
++  String footer = '',
+ }) {
+   final sorted = [...txns]..sort((a, b) {
+     final byDate = a.date.compareTo(b.date);
+@@ -112,13 +138,23 @@ String buildSettlementReceipt({
+       .where((t) => t.type == TxnType.bayar)
+       .fold<int>(0, (sum, t) => sum + t.amount);
+ 
+-  final b = StringBuffer()
++  final b = StringBuffer();
++
++  if (header.trim().isNotEmpty) {
++    b.writeln(header.trim());
++    b.writeln('');
++  }
++  if (shopName.trim().isNotEmpty) {
++    b.writeln('*${shopName.trim()}*');
++  }
++
++  b
+     ..writeln('BUKTI PELUNASAN')
+     ..writeln('Nama: $name')
+     ..writeln('Waktu: ${tglJam(DateTime.now())}')
+     ..writeln('Status: LUNAS')
+-    ..writeln('Total utang: ${rupiah(totalDebt)}')
+-    ..writeln('Total pembayaran: ${rupiah(totalPaid)}')
++    ..writeln('Total utang: *${rupiah(totalDebt)}*')
++    ..writeln('Total pembayaran: *${rupiah(totalPaid)}*')
+     ..writeln('')
+     ..writeln('Rincian transaksi:');
+ 
+@@ -127,7 +163,11 @@ String buildSettlementReceipt({
+   }
+ 
+   b.writeln('');
+-  b.write('Terima kasih sudah menyelesaikan pembayaran 🙏');
++  b.write(
++    footer.trim().isNotEmpty
++        ? footer.trim()
++        : 'Terima kasih sudah menyelesaikan pembayaran 🙏',
++  );
+   return b.toString();
+ }
+ 
+===== DIFF CUSTOMER SCREEN =====
+diff --git a/lib/screens/customer_screen.dart b/lib/screens/customer_screen.dart
+index c9b5bc9..7eba408 100644
+--- a/lib/screens/customer_screen.dart
++++ b/lib/screens/customer_screen.dart
+@@ -7,6 +7,7 @@ import '../dialogs.dart';
+ import '../models.dart';
+ import '../status_style.dart';
+ import '../utils.dart';
++import '../services/shop_message_settings.dart';
+ 
+ class CustomerScreen extends StatefulWidget {
+   final int customerId;
+@@ -69,7 +70,7 @@ class _CustomerScreenState extends State<CustomerScreen> {
+     final newBalance = computeBalance(_txns);
+     _snack(type == TxnType.utang ? 'Utang dicatat' : 'Pembayaran dicatat');
+ 
+-    if (type == TxnType.bayar && oldBalance > 0 && newBalance <= 0) {
++    if (type == TxnType.bayar && oldBalance > 0 && newBalance == 0) {
+       await _sendSettlementReceipt();
+     }
+   }
+@@ -102,7 +103,14 @@ class _CustomerScreenState extends State<CustomerScreen> {
+ 
+     if (send != true || !mounted) return;
+ 
+-    final msg = buildSettlementReceipt(name: c.name, txns: cycle);
++    final messageSettings = await ShopMessageSettings.load();
++    final msg = buildSettlementReceipt(
++      name: c.name,
++      txns: cycle,
++      shopName: messageSettings.shopName,
++      header: messageSettings.header,
++      footer: messageSettings.footer,
++    );
+     var opened = false;
+ 
+     try {
+@@ -134,11 +142,16 @@ class _CustomerScreenState extends State<CustomerScreen> {
+ 
+   Future<void> _tagih() async {
+     final c = _customer!;
++    final messageSettings = await ShopMessageSettings.load();
++    final cycle = activeDebtCycle(_txns);
+     final msg = buildReminder(
+       name: c.name,
+       balance: computeBalance(_txns),
+-      due: nextDueDate(activeDebtCycle(_txns)),
+-      txns: activeDebtCycle(_txns),
++      due: nextDueDate(cycle),
++      txns: cycle,
++      shopName: messageSettings.shopName,
++      header: messageSettings.header,
++      footer: messageSettings.footer,
+     );
+     bool ok;
+     try {
+@@ -269,10 +282,15 @@ class _Header extends StatelessWidget {
+               child: Column(
+                 crossAxisAlignment: CrossAxisAlignment.start,
+                 children: [
+-                  Text('Sisa utang', style: theme.textTheme.labelLarge),
++                  Text(
++                    status == DebtStatus.piutang
++                        ? 'Piutang pelanggan'
++                        : 'Sisa utang',
++                    style: theme.textTheme.labelLarge,
++                  ),
+                   const SizedBox(height: 4),
+                   Text(
+-                    rupiah(summary.balance),
++                    rupiah(summary.balance.abs()),
+                     style: theme.textTheme.headlineMedium?.copyWith(
+                       fontWeight: FontWeight.bold,
+                       color: status == DebtStatus.lunas ? null : color,
+===== DIFF HOME SCREEN =====
+diff --git a/lib/screens/home_screen.dart b/lib/screens/home_screen.dart
+index 336b168..adb48a3 100644
+--- a/lib/screens/home_screen.dart
++++ b/lib/screens/home_screen.dart
+@@ -1,10 +1,13 @@
+ import 'package:flutter/material.dart';
++import 'package:flutter/services.dart';
++import 'package:url_launcher/url_launcher.dart';
+ 
+ import '../db.dart';
+ import '../dialogs.dart';
+ import '../models.dart';
+ import '../status_style.dart';
+ import '../utils.dart';
++import '../services/shop_message_settings.dart';
+ import 'customer_screen.dart';
+ import 'settings_screen.dart';
+ import '../services/backup_status.dart';
+@@ -36,6 +39,43 @@ class _HomeScreenState extends State<HomeScreen> {
+     await _load();
+   }
+ 
++  Future<void> _tagihCepat(CustomerSummary s) async {
++    final c = s.customer;
++    final txns = await AppDb.instance.txnsFor(c.id!);
++    final cycle = activeDebtCycle(txns);
++    final messageSettings = await ShopMessageSettings.load();
++    final msg = buildReminder(
++      name: c.name,
++      balance: computeBalance(txns),
++      due: nextDueDate(cycle),
++      txns: cycle,
++      shopName: messageSettings.shopName,
++      header: messageSettings.header,
++      footer: messageSettings.footer,
++    );
++
++    bool ok;
++    try {
++      ok = await launchUrl(
++        waUri(c.phone, msg),
++        mode: LaunchMode.externalApplication,
++      );
++    } catch (_) {
++      ok = false;
++    }
++
++    if (!ok && mounted) {
++      await Clipboard.setData(ClipboardData(text: msg));
++      ScaffoldMessenger.of(context).showSnackBar(
++        const SnackBar(
++          content: Text(
++            'WhatsApp tidak bisa dibuka. Pesan disalin, tempel manual ya.',
++          ),
++        ),
++      );
++    }
++  }
++
+   Future<void> _load() async {
+     final db = AppDb.instance;
+     final customers = await db.customers();
+@@ -113,8 +153,10 @@ class _HomeScreenState extends State<HomeScreen> {
+         .where((s) => q.isEmpty || s.customer.name.toLowerCase().contains(q))
+         .toList();
+ 
+-    final totalPiutang =
++    final totalUtangPelanggan =
+         _items.fold<int>(0, (sum, s) => sum + (s.balance > 0 ? s.balance : 0));
++    final totalPiutangWarung =
++        _items.fold<int>(0, (sum, s) => sum + (s.balance < 0 ? -s.balance : 0));
+     final telat =
+         _items.where((s) => s.status() == DebtStatus.telat).length;
+     final mendekati =
+@@ -155,7 +197,8 @@ class _HomeScreenState extends State<HomeScreen> {
+           : Column(
+               children: [
+                 _SummaryCard(
+-                  total: totalPiutang,
++                  total: totalUtangPelanggan,
++                  credit: totalPiutangWarung,
+                   telat: telat,
+                   mendekati: mendekati,
+                 ),
+@@ -190,6 +233,7 @@ class _HomeScreenState extends State<HomeScreen> {
+                           itemBuilder: (_, i) => _CustomerTile(
+                             summary: visible[i],
+                             onTap: () => _openCustomer(visible[i].customer),
++                            onTagih: () => _tagihCepat(visible[i]),
+                           ),
+                         ),
+                 ),
+@@ -201,10 +245,12 @@ class _HomeScreenState extends State<HomeScreen> {
+ 
+ class _SummaryCard extends StatelessWidget {
+   final int total;
++  final int credit;
+   final int telat;
+   final int mendekati;
+   const _SummaryCard({
+     required this.total,
++    required this.credit,
+     required this.telat,
+     required this.mendekati,
+   });
+@@ -218,7 +264,7 @@ class _SummaryCard extends StatelessWidget {
+         child: Column(
+           crossAxisAlignment: CrossAxisAlignment.start,
+           children: [
+-            Text('Total piutang',
++            Text('Total utang pelanggan',
+                 style: Theme.of(context).textTheme.labelLarge),
+             const SizedBox(height: 4),
+             Text(
+@@ -228,6 +274,16 @@ class _SummaryCard extends StatelessWidget {
+                   .headlineMedium
+                   ?.copyWith(fontWeight: FontWeight.bold),
+             ),
++            if (credit > 0) ...[
++              const SizedBox(height: 4),
++              Text(
++                'Piutang warung: ${rupiah(credit)}',
++                style: const TextStyle(
++                  color: kBiru,
++                  fontWeight: FontWeight.w600,
++                ),
++              ),
++            ],
+             const SizedBox(height: 12),
+             Row(
+               children: [
+@@ -278,7 +334,12 @@ class _Badge extends StatelessWidget {
+ class _CustomerTile extends StatelessWidget {
+   final CustomerSummary summary;
+   final VoidCallback onTap;
+-  const _CustomerTile({required this.summary, required this.onTap});
++  final VoidCallback onTagih;
++  const _CustomerTile({
++    required this.summary,
++    required this.onTap,
++    required this.onTagih,
++  });
+ 
+   @override
+   Widget build(BuildContext context) {
+@@ -299,9 +360,23 @@ class _CustomerTile extends StatelessWidget {
+             color: status == DebtStatus.lunas ? null : color,
+             fontWeight: FontWeight.w500),
+       ),
+-      trailing: Text(
+-        rupiah(summary.balance),
+-        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
++      trailing: Row(
++        mainAxisSize: MainAxisSize.min,
++        children: [
++          if (status == DebtStatus.mendekati ||
++              summary.balance > 0)
++            IconButton(
++              tooltip: 'Tagih lewat WhatsApp',
++              icon: const Icon(Icons.chat_outlined),
++              color: color,
++              onPressed: onTagih,
++            ),
++          Text(
++            rupiah(summary.balance.abs()),
++            style: const TextStyle(
++                fontWeight: FontWeight.bold, fontSize: 16),
++          ),
++        ],
+       ),
+     );
+   }
+===== IMPORT DAN VERSI SHARED PREFERENCES =====
+21:  shared_preferences: 2.3.1
+lib/services/google_drive_service.dart:29:  final SharedPreferencesAsync _preferences = SharedPreferencesAsync();
+lib/services/backup_status.dart:36:      final prefs = SharedPreferencesAsync();
+lib/services/backup_status.dart:82:      await SharedPreferencesAsync().setBool(key, value);
+lib/services/shop_message_settings.dart:19:    final prefs = SharedPreferencesAsync();
+lib/services/shop_message_settings.dart:28:    final prefs = SharedPreferencesAsync();
+===== FUNGSI TANGGAL DAN FORMAT RUPIAH =====
+9:String rupiah(int value) {
+20:String tglJam(DateTime d) {
+22:    return tgl(d);
+29:String tgl(DateTime d) => '${d.day} ${_bulan[d.month - 1]} ${d.year}';
+45:      return s.nextDue == null ? 'Utang berjalan' : 'Tempo ${tgl(s.nextDue!)}';
+71:  return '${tglJam(t.date)}: $label $sign${rupiah(t.amount)}$note';
+104:  if (due != null) b.writeln('Jatuh tempo: ${tgl(due)}.');
+154:    ..writeln('Waktu: ${tglJam(DateTime.now())}')
+183:    ..writeln('Per tanggal: ${tgl(DateTime.now())}')
+===== SEMUA PEMANGGIL PESAN =====
+lib/utils.dart:78:String buildReminder({
+lib/utils.dart:122:String buildSettlementReceipt({
+lib/screens/customer_screen.dart:107:    final msg = buildSettlementReceipt(
+lib/screens/customer_screen.dart:147:    final msg = buildReminder(
+lib/screens/home_screen.dart:47:    final msg = buildReminder(
+===== PEMERIKSAAN DIFF =====
