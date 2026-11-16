@@ -1,93 +1,90 @@
-===== CUSTOMER _tagih =====
-138-    if (!ok) return;
-139-    await AppDb.instance.deleteTxn(t.id!);
-140-    await _load();
-141-  }
-142-
+===== FUNGSI CUSTOMER =====
 143:  Future<void> _tagih() async {
 144-    final c = _customer!;
-145-    final messageSettings = await ShopMessageSettings.load();
-146-    final cycle = activeDebtCycle(_txns);
-147-    final msg = buildReminder(
-148-      name: c.name,
-149-      balance: computeBalance(_txns),
-150-      due: nextDueDate(cycle),
-151-      txns: cycle,
-152-      shopName: messageSettings.shopName,
-153-      header: messageSettings.header,
-154-      footer: messageSettings.footer,
-155-    );
-156-    bool ok;
-157-    try {
-158-      ok = await launchUrl(waUri(c.phone, msg),
-159-          mode: LaunchMode.externalApplication);
-160-    } catch (_) {
-161-      ok = false;
-162-    }
-163-    if (!ok && mounted) {
-164-      await Clipboard.setData(ClipboardData(text: msg));
-165-      _snack('WhatsApp tidak bisa dibuka. Pesan disalin, tempel manual ya.');
-166-    }
-167-  }
-168-
-169-  Future<void> _copyRecap() async {
-170-    final c = _customer!;
-171-    await Clipboard.setData(ClipboardData(
-172-      text: buildRecap(
-173-        name: c.name,
-174-        balance: computeBalance(_txns),
-175-        txns: _txns,
-176-      ),
-177-    ));
-178-    if (mounted) _snack('Rekap disalin');
+145-    final balance = computeBalance(_txns);
+146-    if (balance <= 0) {
+147-      _snack('Tidak ada utang yang perlu ditagih.');
+148-      return;
+149-    }
+150-
+151-    final messageSettings = await ShopMessageSettings.load();
+152-    final cycle = activeDebtCycle(_txns);
+153-    final msg = buildReminder(
+154-      name: c.name,
+155-      balance: balance,
+156-      due: nextDueDate(cycle),
+157-      txns: cycle,
+158-      shopName: messageSettings.shopName,
+159-      header: messageSettings.header,
+160-      footer: messageSettings.footer,
+161-    );
+162-    bool ok;
+163-    try {
+164-      ok = await launchUrl(waUri(c.phone, msg),
+165-          mode: LaunchMode.externalApplication);
+166-    } catch (_) {
+167-      ok = false;
+168-    }
+169-    if (!ok && mounted) {
+170-      await Clipboard.setData(ClipboardData(text: msg));
+171-      _snack('WhatsApp tidak bisa dibuka. Pesan disalin, tempel manual ya.');
+172-    }
+173-  }
+174-
+175-  Future<void> _copyRecap() async {
+176-    final c = _customer!;
+177-    await Clipboard.setData(ClipboardData(
+178-      text: buildRecap(
 
-===== HOME _tagihCepat =====
-37-      MaterialPageRoute(builder: (_) => const SettingsScreen()),
-38-    );
-39-    await _load();
-40-  }
-41-
+===== FUNGSI HOME =====
 42:  Future<void> _tagihCepat(CustomerSummary s) async {
 43-    final c = s.customer;
 44-    final txns = await AppDb.instance.txnsFor(c.id!);
-45-    final cycle = activeDebtCycle(txns);
-46-    final messageSettings = await ShopMessageSettings.load();
-47-    final msg = buildReminder(
-48-      name: c.name,
-49-      balance: computeBalance(txns),
-50-      due: nextDueDate(cycle),
-51-      txns: cycle,
-52-      shopName: messageSettings.shopName,
-53-      header: messageSettings.header,
-54-      footer: messageSettings.footer,
-55-    );
+45-    if (!mounted) return;
+46-
+47-    final balance = computeBalance(txns);
+48-    if (balance <= 0) {
+49-      ScaffoldMessenger.of(context).showSnackBar(
+50-        const SnackBar(
+51-          content: Text('Tidak ada utang yang perlu ditagih.'),
+52-        ),
+53-      );
+54-      return;
+55-    }
 56-
-57-    bool ok;
-58-    try {
-59-      ok = await launchUrl(
-60-        waUri(c.phone, msg),
-61-        mode: LaunchMode.externalApplication,
-62-      );
-63-    } catch (_) {
-64-      ok = false;
-65-    }
-66-
-67-    if (!ok && mounted) {
-68-      await Clipboard.setData(ClipboardData(text: msg));
-69-      ScaffoldMessenger.of(context).showSnackBar(
-70-        const SnackBar(
-71-          content: Text(
-72-            'WhatsApp tidak bisa dibuka. Pesan disalin, tempel manual ya.',
-73-          ),
-74-        ),
-75-      );
-76-    }
-77-  }
+57-    final cycle = activeDebtCycle(txns);
+58-    final messageSettings = await ShopMessageSettings.load();
+59-    final msg = buildReminder(
+60-      name: c.name,
+61-      balance: balance,
+62-      due: nextDueDate(cycle),
+63-      txns: cycle,
+64-      shopName: messageSettings.shopName,
+65-      header: messageSettings.header,
+66-      footer: messageSettings.footer,
+67-    );
+68-
+69-    bool ok;
+70-    try {
+71-      ok = await launchUrl(
+72-        waUri(c.phone, msg),
+73-        mode: LaunchMode.externalApplication,
+74-      );
+75-    } catch (_) {
+76-      ok = false;
+77-    }
 78-
-79-  Future<void> _load() async {
-80-    final db = AppDb.instance;
-81-    final customers = await db.customers();
-82-    await BackupStatus.instance.load(hasData: customers.isNotEmpty);
+79-    if (!ok && mounted) {
+80-      await Clipboard.setData(ClipboardData(text: msg));
+81-      ScaffoldMessenger.of(context).showSnackBar(
+82-        const SnackBar(
+83-          content: Text(
+84-            'WhatsApp tidak bisa dibuka. Pesan disalin, tempel manual ya.',
+85-          ),
+86-        ),
+87-      );
+
+===== DIFF CHECK =====
 
 ===== STATUS =====
  M lib/models.dart
@@ -116,6 +113,7 @@
 ?? backup_google_session_fix_20261115_124655/
 ?? backup_guard_whatsapp_20261116_230413/
 ?? backup_guard_whatsapp_20261116_230532/
+?? backup_guard_whatsapp_v2_20261116_230720/
 ?? backup_listener_google_20261115_125040/
 ?? backup_pengaturan_warung_20261116_222928/
 ?? backup_remove_app_lock_20261116_213512/
