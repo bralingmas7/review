@@ -1,0 +1,306 @@
+===== SETTINGS BUILD DAN IMPORT =====
+grep: Unmatched ( or \(
+===== SETTINGS SHARED PREFERENCES =====
+grep: Unmatched ( or \(
+===== PUBSPEC LENGKAP =====
+name: buku_utang_warung
+description: Buku utang pelanggan untuk pemilik warung. Offline, cepat, dan bisa tagih lewat WhatsApp.
+publish_to: "none"
+version: 0.1.0+1
+
+environment:
+  sdk: ">=3.3.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  sqflite: ^2.3.3
+  path: ^1.9.0
+  url_launcher: ^6.3.0
+  file_picker: ^12.3.0
+
+  google_sign_in: ^7.2.0
+  googleapis: ^19.0.0
+  extension_google_sign_in_as_googleapis_auth: ^3.0.0
+  cryptography: ^2.7.0
+  shared_preferences: 2.3.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  sqflite_common_ffi: 2.3.3
+  sqlite3: 2.4.0
+
+flutter:
+  uses-material-design: true
+===== CUSTOMER SCREEN BAGIAN ATAS DAN HEADER =====
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
+
+import '../db.dart';
+import '../dialogs.dart';
+import '../models.dart';
+import '../status_style.dart';
+import '../utils.dart';
+
+class CustomerScreen extends StatefulWidget {
+  final int customerId;
+  const CustomerScreen({super.key, required this.customerId});
+
+  @override
+  State<CustomerScreen> createState() => _CustomerScreenState();
+}
+
+class _CustomerScreenState extends State<CustomerScreen> {
+  Customer? _customer;
+  List<Txn> _txns = [];
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final db = AppDb.instance;
+    final c = await db.customer(widget.customerId);
+    final t = await db.txnsFor(widget.customerId);
+    if (!mounted) return;
+    if (c == null) {
+      Navigator.pop(context);
+      return;
+    }
+    setState(() {
+      _customer = c;
+      _txns = t;
+      _loading = false;
+    });
+  }
+
+  void _snack(String msg) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(msg)));
+  }
+
+  Future<void> _addTxn(TxnType type) async {
+    final c = _customer!;
+    final oldBalance = computeBalance(_txns);
+
+    final txn = await showTxnForm(
+      context,
+      customer: c,
+      type: type,
+      balance: oldBalance,
+    );
+    if (txn == null) return;
+
+    await AppDb.instance.insertTxn(txn);
+    await _load();
+
+    if (!mounted) return;
+
+    final newBalance = computeBalance(_txns);
+    _snack(type == TxnType.utang ? 'Utang dicatat' : 'Pembayaran dicatat');
+
+    if (type == TxnType.bayar && oldBalance > 0 && newBalance <= 0) {
+      await _sendSettlementReceipt();
+    }
+  }
+
+  Future<void> _sendSettlementReceipt() async {
+    final c = _customer!;
+    final cycle = latestClosedDebtCycle(_txns);
+    if (cycle.isEmpty) return;
+
+    final send = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Utang sudah lunas'),
+        content: const Text(
+          'Saldo pelanggan sudah lunas. Kirim bukti pelunasan '
+          'beserta seluruh transaksi dalam siklus ini melalui WhatsApp?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Nanti'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Kirim WhatsApp'),
+          ),
+        ],
+      ),
+    );
+
+    if (send != true || !mounted) return;
+
+    final msg = buildSettlementReceipt(name: c.name, txns: cycle);
+    var opened = false;
+
+    try {
+      opened = await launchUrl(
+        waUri(c.phone, msg),
+        mode: LaunchMode.externalApplication,
+      );
+    } catch (_) {
+      opened = false;
+    }
+class _Header extends StatelessWidget {
+  final CustomerSummary summary;
+  final Future<void> Function(TxnType) onAdd;
+  final VoidCallback onTagih;
+  const _Header({
+    required this.summary,
+    required this.onAdd,
+    required this.onTagih,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final c = summary.customer;
+    final status = summary.status();
+    final color = statusColor(status);
+    final theme = Theme.of(context);
+
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Sisa utang', style: theme.textTheme.labelLarge),
+                  const SizedBox(height: 4),
+                  Text(
+                    rupiah(summary.balance),
+                    style: theme.textTheme.headlineMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      color: status == DebtStatus.lunas ? null : color,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(statusText(summary),
+                      style: TextStyle(
+                          color: color, fontWeight: FontWeight.w600)),
+                  if (c.creditLimit > 0) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      'Batas utang ${rupiah(c.creditLimit)}'
+                      '${summary.overLimit ? ' (terlewati)' : ''}',
+                      style: TextStyle(
+                        color: summary.overLimit ? kMerah : null,
+                        fontWeight:
+                            summary.overLimit ? FontWeight.w600 : null,
+                      ),
+                    ),
+                  ],
+                  if (c.phone.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Text('WhatsApp: ${c.phone}'),
+                  ],
+                  if (c.note.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Text(c.note, style: theme.textTheme.bodySmall),
+                  ],
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: FilledButton.icon(
+                  onPressed: () => onAdd(TxnType.utang),
+                  icon: const Icon(Icons.add),
+                  label: const Text('Utang baru'),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: FilledButton.tonalIcon(
+                  onPressed: summary.balance > 0
+                      ? () => onAdd(TxnType.bayar)
+                      : null,
+                  icon: const Icon(Icons.payments_outlined),
+                  label: const Text('Bayar'),
+                ),
+              ),
+            ],
+          ),
+          if (summary.balance > 0) ...[
+            const SizedBox(height: 8),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: onTagih,
+                icon: const Icon(Icons.chat_outlined),
+                label: const Text('Tagih lewat WhatsApp'),
+              ),
+            ),
+          ],
+          const SizedBox(height: 20),
+          Text('Riwayat', style: theme.textTheme.titleMedium),
+          Text('Tahan lama pada catatan untuk menghapus.',
+              style: theme.textTheme.bodySmall),
+        ],
+      ),
+    );
+  }
+}
+===== SIKLUS UTANG =====
+/// Mengurutkan transaksi berdasarkan waktu, lalu ID untuk waktu yang sama.
+List<Txn> _orderedTxns(List<Txn> txns) {
+  return [...txns]..sort((a, b) {
+    final byDate = a.date.compareTo(b.date);
+    return byDate != 0 ? byDate : (a.id ?? 0).compareTo(b.id ?? 0);
+  });
+}
+
+/// Transaksi pada siklus utang yang masih aktif.
+List<Txn> activeDebtCycle(List<Txn> txns) {
+  final cycle = <Txn>[];
+  var balance = 0;
+
+  for (final t in _orderedTxns(txns)) {
+    cycle.add(t);
+    balance += t.type == TxnType.utang ? t.amount : -t.amount;
+
+    if (balance <= 0) {
+      cycle.clear();
+      balance = 0;
+    }
+  }
+
+  return cycle;
+}
+
+/// Transaksi pada siklus terakhir yang sudah lunas.
+List<Txn> latestClosedDebtCycle(List<Txn> txns) {
+  final cycle = <Txn>[];
+  List<Txn> latestClosed = [];
+  var balance = 0;
+
+  for (final t in _orderedTxns(txns)) {
+    cycle.add(t);
+    balance += t.type == TxnType.utang ? t.amount : -t.amount;
+
+    if (balance <= 0) {
+      if (cycle.any((item) => item.type == TxnType.utang)) {
+        latestClosed = List<Txn>.from(cycle);
+      }
+      cycle.clear();
+      balance = 0;
+    }
+  }
+
+  return latestClosed;
+}
