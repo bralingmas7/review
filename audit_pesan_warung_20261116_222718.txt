@@ -1,0 +1,531 @@
+===== CUSTOMER SCREEN =====
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
+
+import '../db.dart';
+import '../dialogs.dart';
+import '../models.dart';
+import '../status_style.dart';
+import '../utils.dart';
+
+class CustomerScreen extends StatefulWidget {
+  final int customerId;
+  const CustomerScreen({super.key, required this.customerId});
+
+  @override
+  State<CustomerScreen> createState() => _CustomerScreenState();
+}
+
+class _CustomerScreenState extends State<CustomerScreen> {
+  Customer? _customer;
+  List<Txn> _txns = [];
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final db = AppDb.instance;
+    final c = await db.customer(widget.customerId);
+    final t = await db.txnsFor(widget.customerId);
+    if (!mounted) return;
+    if (c == null) {
+      Navigator.pop(context);
+      return;
+    }
+    setState(() {
+      _customer = c;
+      _txns = t;
+      _loading = false;
+    });
+  }
+
+  void _snack(String msg) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(msg)));
+  }
+
+  Future<void> _addTxn(TxnType type) async {
+    final c = _customer!;
+    final oldBalance = computeBalance(_txns);
+
+    final txn = await showTxnForm(
+      context,
+      customer: c,
+      type: type,
+      balance: oldBalance,
+    );
+    if (txn == null) return;
+
+    await AppDb.instance.insertTxn(txn);
+    await _load();
+
+    if (!mounted) return;
+
+    final newBalance = computeBalance(_txns);
+    _snack(type == TxnType.utang ? 'Utang dicatat' : 'Pembayaran dicatat');
+
+    if (type == TxnType.bayar && oldBalance > 0 && newBalance == 0) {
+      await _sendSettlementReceipt();
+    }
+  }
+
+  Future<void> _sendSettlementReceipt() async {
+    final c = _customer!;
+    final cycle = latestClosedDebtCycle(_txns);
+    if (cycle.isEmpty) return;
+
+    final send = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Utang sudah lunas'),
+        content: const Text(
+          'Saldo pelanggan sudah lunas. Kirim bukti pelunasan '
+          'beserta seluruh transaksi dalam siklus ini melalui WhatsApp?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Nanti'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Kirim WhatsApp'),
+          ),
+        ],
+      ),
+    );
+
+    if (send != true || !mounted) return;
+
+    final msg = buildSettlementReceipt(name: c.name, txns: cycle);
+    var opened = false;
+
+    try {
+      opened = await launchUrl(
+        waUri(c.phone, msg),
+        mode: LaunchMode.externalApplication,
+      );
+    } catch (_) {
+      opened = false;
+    }
+
+    if (!opened && mounted) {
+      await Clipboard.setData(ClipboardData(text: msg));
+      _snack('WhatsApp tidak bisa dibuka. Bukti pelunasan disalin.');
+    }
+  }
+
+  Future<void> _deleteTxn(Txn t) async {
+    final ok = await confirmDialog(
+      context,
+      title: 'Hapus catatan?',
+      message: '${t.type == TxnType.utang ? 'Utang' : 'Pembayaran'} '
+          '${rupiah(t.amount)} tanggal ${tglJam(t.date)} akan dihapus.',
+    );
+    if (!ok) return;
+    await AppDb.instance.deleteTxn(t.id!);
+    await _load();
+  }
+
+  Future<void> _tagih() async {
+    final c = _customer!;
+    final msg = buildReminder(
+      name: c.name,
+      balance: computeBalance(_txns),
+      due: nextDueDate(activeDebtCycle(_txns)),
+      txns: activeDebtCycle(_txns),
+    );
+    bool ok;
+    try {
+      ok = await launchUrl(waUri(c.phone, msg),
+          mode: LaunchMode.externalApplication);
+    } catch (_) {
+      ok = false;
+    }
+    if (!ok && mounted) {
+      await Clipboard.setData(ClipboardData(text: msg));
+      _snack('WhatsApp tidak bisa dibuka. Pesan disalin, tempel manual ya.');
+    }
+  }
+
+  Future<void> _copyRecap() async {
+    final c = _customer!;
+    await Clipboard.setData(ClipboardData(
+      text: buildRecap(
+        name: c.name,
+        balance: computeBalance(_txns),
+        txns: _txns,
+      ),
+    ));
+    if (mounted) _snack('Rekap disalin');
+  }
+
+  Future<void> _edit() async {
+    final updated = await showCustomerForm(context, existing: _customer);
+    if (updated == null) return;
+    await AppDb.instance.updateCustomer(updated);
+    await _load();
+  }
+
+  Future<void> _deleteCustomer() async {
+===== HOME SCREEN =====
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
+
+import '../db.dart';
+import '../dialogs.dart';
+import '../models.dart';
+import '../status_style.dart';
+import '../utils.dart';
+import 'customer_screen.dart';
+import 'settings_screen.dart';
+import '../services/backup_status.dart';
+import '../widgets/backup_indicator.dart';
+
+class HomeScreen extends StatefulWidget {
+  const HomeScreen({super.key});
+
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  List<CustomerSummary> _items = [];
+  bool _loading = true;
+  String _query = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _openSettings() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const SettingsScreen()),
+    );
+    await _load();
+  }
+
+  Future<void> _tagihCepat(CustomerSummary s) async {
+    final c = s.customer;
+    final txns = await AppDb.instance.txnsFor(c.id!);
+    final cycle = activeDebtCycle(txns);
+    final msg = buildReminder(
+      name: c.name,
+      balance: computeBalance(txns),
+      due: nextDueDate(cycle),
+      txns: cycle,
+    );
+
+    bool ok;
+    try {
+      ok = await launchUrl(
+        waUri(c.phone, msg),
+        mode: LaunchMode.externalApplication,
+      );
+    } catch (_) {
+      ok = false;
+    }
+
+    if (!ok && mounted) {
+      await Clipboard.setData(ClipboardData(text: msg));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'WhatsApp tidak bisa dibuka. Pesan disalin, tempel manual ya.',
+          ),
+        ),
+      );
+    }
+  }
+
+  Future<void> _load() async {
+    final db = AppDb.instance;
+    final customers = await db.customers();
+    await BackupStatus.instance.load(hasData: customers.isNotEmpty);
+    final txns = await db.allTxns();
+    final list = buildSummaries(customers, txns)
+      ..sort((a, b) {
+        final byBalance = b.balance.compareTo(a.balance);
+        return byBalance != 0
+            ? byBalance
+            : a.customer.name
+                .toLowerCase()
+                .compareTo(b.customer.name.toLowerCase());
+      });
+    if (!mounted) return;
+    setState(() {
+      _items = list;
+      _loading = false;
+    });
+  }
+
+  Future<Customer?> _createCustomer() async {
+    final c = await showCustomerForm(context);
+    if (c == null) return null;
+    final id = await AppDb.instance.insertCustomer(c);
+    return c.copyWith(id: id);
+  }
+===== SETTINGS SCREEN TAIL =====
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Detail teknis: $_googleRestoreStatus',
+                            style: const TextStyle(fontSize: 11),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  if (_googleEmail != null) ...[
+                    const SizedBox(height: 8),
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: const Icon(Icons.account_circle_outlined),
+                      title: const Text('Akun Google terakhir digunakan'),
+                      subtitle: Text(_googleEmail!),
+                    ),
+                    if (GoogleDriveService.instance.account == null) ...[
+                      const SizedBox(height: 8),
+                      SizedBox(
+                        width: double.infinity,
+                        child: FilledButton.icon(
+                          onPressed: _busy ? null : _connectGoogle,
+                          icon: const Icon(Icons.login),
+                          label: const Text('Verifikasi akun Google'),
+                        ),
+                      ),
+                    ],
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: _busy ? null : _switchGoogle,
+                        icon: const Icon(Icons.switch_account),
+                        label: const Text('Ganti akun Google'),
+                      ),
+                    ),
+                    SizedBox(
+                      width: double.infinity,
+                      child: TextButton.icon(
+                        onPressed: _busy ? null : _logoutGoogle,
+                        icon: const Icon(Icons.logout),
+                        label: const Text('Logout Google'),
+                      ),
+                    ),
+                  ] else
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton.icon(
+                        onPressed: _busy ? null : _connectGoogle,
+                        icon: const Icon(Icons.login),
+                        label: const Text('Hubungkan Google Drive'),
+                      ),
+                    ),
+                  if (_googleEmail != null) ...[
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton.icon(
+                        onPressed: _busy ? null : _cloudBackup,
+                        icon: const Icon(Icons.cloud_upload_outlined),
+                        label: const Text('Backup ke Google Drive'),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: _busy ? null : _cloudRestore,
+                        icon: const Icon(Icons.cloud_download_outlined),
+                        label: const Text('Pulihkan dari Google Drive'),
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Backup cloud dienkripsi sebelum dikirim. '
+                    'Gunakan password backup khusus dan ingat password tersebut '
+                    'untuk memulihkan data.',
+                    style: TextStyle(fontSize: 12),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          if (_busy) ...[
+            const SizedBox(height: 20),
+            const Center(child: CircularProgressIndicator()),
+          ],
+          const SizedBox(height: 16),
+          const Text(
+            'Data aplikasi tetap tersimpan di perangkat. '
+            'Logout akun Google nantinya tidak akan menghapus data lokal.',
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
+    );
+  }
+}
+===== UTILS =====
+import 'models.dart';
+
+const _bulan = [
+  'Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun',
+  'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des',
+];
+
+/// 15000 -> "Rp 15.000"
+String rupiah(int value) {
+  final digits = value.abs().toString();
+  final buf = StringBuffer();
+  for (var i = 0; i < digits.length; i++) {
+    if (i > 0 && (digits.length - i) % 3 == 0) buf.write('.');
+    buf.write(digits[i]);
+  }
+  return '${value < 0 ? '-' : ''}Rp $buf';
+}
+
+/// DateTime(2026, 11, 5) -> "5 Nov 2026"
+String tglJam(DateTime d) {
+  if (d.hour == 0 && d.minute == 0 && d.second == 0 && d.millisecond == 0) {
+    return tgl(d);
+  }
+  String two(int n) => n.toString().padLeft(2, '0');
+  return '${two(d.day)}-${two(d.month)}-${d.year} '
+      '${two(d.hour)}:${two(d.minute)}:${two(d.second)}';
+}
+
+String tgl(DateTime d) => '${d.day} ${_bulan[d.month - 1]} ${d.year}';
+
+String statusText(CustomerSummary s, [DateTime? now]) {
+  final today = dateOnly(now ?? DateTime.now());
+  switch (s.status(now)) {
+    case DebtStatus.piutang:
+      return 'Piutang pelanggan';
+    case DebtStatus.lunas:
+      return 'Lunas';
+    case DebtStatus.telat:
+      final days = today.difference(dateOnly(s.nextDue!)).inDays;
+      return 'Telat $days hari';
+    case DebtStatus.mendekati:
+      final days = dateOnly(s.nextDue!).difference(today).inDays;
+      return days == 0 ? 'Jatuh tempo hari ini' : 'Jatuh tempo $days hari lagi';
+    case DebtStatus.lancar:
+      return s.nextDue == null ? 'Utang berjalan' : 'Tempo ${tgl(s.nextDue!)}';
+  }
+}
+
+/// Ubah nomor lokal ke format internasional tanpa plus untuk wa.me.
+/// "0812-3456-789" -> "628123456789". Mengembalikan null jika kosong.
+String? normalizePhone(String raw) {
+  final d = raw.replaceAll(RegExp(r'[^0-9]'), '');
+  if (d.isEmpty) return null;
+  if (d.startsWith('62')) return d;
+  if (d.startsWith('0')) return '62${d.substring(1)}';
+  if (d.startsWith('8')) return '62$d';
+  return d;
+}
+
+/// Tautan WhatsApp. Tanpa nomor, WhatsApp membiarkan pengguna memilih kontak.
+Uri waUri(String phone, String text) {
+  final n = normalizePhone(phone);
+  final encoded = Uri.encodeComponent(text);
+  return Uri.parse('https://wa.me/${n ?? ''}?text=$encoded');
+}
+
+String _line(Txn t) {
+  final sign = t.type == TxnType.utang ? '+' : '-';
+  final label = t.type == TxnType.utang ? 'utang' : 'bayar';
+  final note = t.note.trim().isEmpty ? '' : ' (${t.note.trim()})';
+  return '${tglJam(t.date)}: $label $sign${rupiah(t.amount)}$note';
+}
+
+List<Txn> _newestFirst(List<Txn> txns) =>
+    [...txns]..sort((a, b) => b.date.compareTo(a.date));
+
+/// Pesan tagih yang sopan, siap kirim lewat WhatsApp.
+String buildReminder({
+  required String name,
+  required int balance,
+  DateTime? due,
+  required List<Txn> txns,
+}) {
+  final b = StringBuffer()
+    ..writeln('Halo $name, mohon maaf mengganggu 🙏')
+    ..writeln(
+        'Ini pengingat ramah dari warung: sisa utang Anda saat ini ${rupiah(balance)}.');
+  if (due != null) b.writeln('Jatuh tempo: ${tgl(due)}.');
+  final recent = _newestFirst(txns);
+  if (recent.isNotEmpty) {
+    b.writeln('\nRincian terakhir:');
+    for (final t in recent) {
+      b.writeln('- ${_line(t)}');
+    }
+  }
+  b.write('\nKalau sudah ada rezekinya, ditunggu ya. Terima kasih banyak!');
+  return b.toString();
+}
+
+/// Pesan bukti pelunasan untuk satu siklus utang yang telah ditutup.
+String buildSettlementReceipt({
+  required String name,
+  required List<Txn> txns,
+}) {
+  final sorted = [...txns]..sort((a, b) {
+    final byDate = a.date.compareTo(b.date);
+    return byDate != 0 ? byDate : (a.id ?? 0).compareTo(b.id ?? 0);
+  });
+
+  final totalDebt = sorted
+      .where((t) => t.type == TxnType.utang)
+      .fold<int>(0, (sum, t) => sum + t.amount);
+  final totalPaid = sorted
+      .where((t) => t.type == TxnType.bayar)
+      .fold<int>(0, (sum, t) => sum + t.amount);
+
+  final b = StringBuffer()
+    ..writeln('BUKTI PELUNASAN')
+    ..writeln('Nama: $name')
+    ..writeln('Waktu: ${tglJam(DateTime.now())}')
+    ..writeln('Status: LUNAS')
+    ..writeln('Total utang: ${rupiah(totalDebt)}')
+    ..writeln('Total pembayaran: ${rupiah(totalPaid)}')
+    ..writeln('')
+    ..writeln('Rincian transaksi:');
+
+  for (final t in sorted) {
+    b.writeln('- ${_line(t)}');
+  }
+
+  b.writeln('');
+  b.write('Terima kasih sudah menyelesaikan pembayaran 🙏');
+  return b.toString();
+}
+
+/// Rekap lengkap satu pelanggan sebagai teks.
+String buildRecap({
+  required String name,
+  required int balance,
+  required List<Txn> txns,
+}) {
+  final b = StringBuffer()
+    ..writeln('REKAP UTANG: $name')
+    ..writeln('Sisa utang: ${rupiah(balance)}')
+    ..writeln('Per tanggal: ${tgl(DateTime.now())}')
+    ..writeln('');
+  final sorted = [...txns]..sort((a, b) => a.date.compareTo(b.date));
+  for (final t in sorted) {
+    b.writeln(_line(t));
+  }
+  return b.toString().trimRight();
+}
