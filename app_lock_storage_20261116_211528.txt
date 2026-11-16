@@ -1,0 +1,103 @@
+===== APP LOCK STORAGE PATCH =====
+Mon Nov 16 21:15:28 WIB 2026
+Backup: backup_app_lock_storage_20261116_211528
+
+===== DIFF CHECK =====
+Exit code: 0
+
+===== LOAD VALIDATION =====
+55:  Future<void> load() async {
+56-    if (_loaded) return;
+57-
+58-    // Jangan mengubah status menjadi nonaktif jika penyimpanan gagal dibaca.
+59-    // Error diteruskan ke AppLockGate agar aplikasi tidak terbuka tanpa kunci.
+60-    final prefs = SharedPreferencesAsync();
+61-    final enabled = (await prefs.getBool(_enabledKey)) ?? false;
+62-    final biometric = (await prefs.getBool(_bioKey)) ?? false;
+63-    final salt = await prefs.getString(_saltKey);
+64-    final hash = await prefs.getString(_hashKey);
+65-
+66-    if (enabled) {
+67-      if (salt == null || hash == null) {
+68-        throw StateError(
+69-          'Kunci aktif tetapi data PIN tidak lengkap. Status keamanan perlu dipulihkan.',
+70-        );
+71-      }
+72-
+73-      try {
+74-        final saltBytes = base64Decode(salt);
+75-        final hashBytes = base64Decode(hash);
+76-        if (saltBytes.length != 16 || hashBytes.length != 32) {
+77-          throw const FormatException('Ukuran data PIN tidak valid.');
+78-        }
+79-      } catch (_) {
+80-        throw StateError(
+81-          'Data PIN rusak atau tidak valid. Pemulihan diperlukan.',
+82-        );
+83-      }
+84-    }
+85-
+
+===== LOCKOUT VALIDATION =====
+128:  Future<Duration?> lockoutRemaining() async {
+129-    // Jangan menganggap tidak terkunci jika penyimpanan gagal dibaca.
+130-    final until = (await SharedPreferencesAsync().getInt(_untilKey)) ?? 0;
+131-    final now = DateTime.now().millisecondsSinceEpoch;
+132-    if (until <= now) return null;
+133-    return Duration(seconds: ((until - now) / 1000).ceil());
+134-  }
+135-
+136-  Future<PinCheck> verifyPin(String pin) async {
+137-    try {
+138-      final prefs = SharedPreferencesAsync();
+139-
+140-      final remaining = await lockoutRemaining();
+
+===== STATUS =====
+ M .github/workflows/build-apk.yml
+ M lib/main.dart
+ M lib/screens/home_screen.dart
+ M lib/screens/settings_screen.dart
+ M lib/services/backup_status.dart
+ M lib/widgets/backup_indicator.dart
+ M pubspec.yaml
+?? add_backup_indicator.sh
+?? backup_app_lock_integrity_20261116_210514/
+?? backup_app_lock_recovery_20261116_210009/
+?? backup_app_lock_safe_20261116_205501/
+?? backup_app_lock_safe_20261116_205635/
+?? backup_app_lock_safe_20261116_205712/
+?? backup_app_lock_storage_20261116_211528/
+?? backup_before_revert_lightweight_20261115_133121/
+?? backup_cloud_reconnect_20261115_133235/
+?? backup_diagnostik_google_20261115_111942/
+?? backup_fix_google_import_20261115_104148/
+?? backup_google_login_20261114_185251/
+?? backup_google_restore_20261115_132224/
+?? backup_google_session_20261115_102650/
+?? backup_google_session_fix_20261115_123805/
+?? backup_google_session_fix_20261115_124655/
+?? backup_listener_google_20261115_125040/
+?? backup_sebelum_cloud_ui_20261114_225058/
+?? backup_sebelum_cloud_ui_20261114_225846/
+?? backup_sebelum_fix_sqlite_20261114_231957/
+?? backup_sebelum_google_20261114_184301/
+?? backup_sebelum_integrasi_drive_20261114_221515/
+?? backup_sebelum_pin_ffi_20261114_230953/
+?? backup_sebelum_pin_shared_preferences_20261115_124930/
+?? backup_sebelum_settings_20261114_164203/
+?? backup_sebelum_test_restore_20261114_230544/
+?? backup_sebelum_update_siklus/
+?? backup_status_google_20261114_192221/
+?? fix_diag.sh
+?? fix_google_session.sh
+?? fix_ux.sh
+?? lib/screens/lock_screen.dart
+?? lib/screens/pin_screen.dart
+?? lib/services/app_lock_service.dart
+?? lib/widgets/app_lock_gate.dart
+?? lib/widgets/app_lock_settings_card.dart
+?? lib/widgets/pin_pad.dart
+?? patch_google_session.py
+?? patchv3.py
+?? tambah_fitur.sh
