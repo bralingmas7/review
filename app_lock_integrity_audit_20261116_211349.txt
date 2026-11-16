@@ -1,0 +1,1006 @@
+===== APP LOCK INTEGRITY AUDIT =====
+Mon Nov 16 21:13:49 WIB 2026
+
+===== 1. GIT STATUS =====
+ M .github/workflows/build-apk.yml
+ M lib/main.dart
+ M lib/screens/home_screen.dart
+ M lib/screens/settings_screen.dart
+ M lib/services/backup_status.dart
+ M lib/widgets/backup_indicator.dart
+ M pubspec.yaml
+?? add_backup_indicator.sh
+?? backup_app_lock_integrity_20261116_210514/
+?? backup_app_lock_recovery_20261116_210009/
+?? backup_app_lock_safe_20261116_205501/
+?? backup_app_lock_safe_20261116_205635/
+?? backup_app_lock_safe_20261116_205712/
+?? backup_before_revert_lightweight_20261115_133121/
+?? backup_cloud_reconnect_20261115_133235/
+?? backup_diagnostik_google_20261115_111942/
+?? backup_fix_google_import_20261115_104148/
+?? backup_google_login_20261114_185251/
+?? backup_google_restore_20261115_132224/
+?? backup_google_session_20261115_102650/
+?? backup_google_session_fix_20261115_123805/
+?? backup_google_session_fix_20261115_124655/
+?? backup_listener_google_20261115_125040/
+?? backup_sebelum_cloud_ui_20261114_225058/
+?? backup_sebelum_cloud_ui_20261114_225846/
+?? backup_sebelum_fix_sqlite_20261114_231957/
+?? backup_sebelum_google_20261114_184301/
+?? backup_sebelum_integrasi_drive_20261114_221515/
+?? backup_sebelum_pin_ffi_20261114_230953/
+?? backup_sebelum_pin_shared_preferences_20261115_124930/
+?? backup_sebelum_settings_20261114_164203/
+?? backup_sebelum_test_restore_20261114_230544/
+?? backup_sebelum_update_siklus/
+?? backup_status_google_20261114_192221/
+?? fix_diag.sh
+?? fix_google_session.sh
+?? fix_ux.sh
+?? lib/screens/lock_screen.dart
+?? lib/screens/pin_screen.dart
+?? lib/services/app_lock_service.dart
+?? lib/widgets/app_lock_gate.dart
+?? lib/widgets/app_lock_settings_card.dart
+?? lib/widgets/pin_pad.dart
+?? patch_google_session.py
+?? patchv3.py
+?? tambah_fitur.sh
+
+===== 2. WHITESPACE CHECK =====
+Exit code: 0
+
+===== 3. ENUM DAN SELURUH PEMAKAIAN PINRESULT =====
+lib/screens/lock_screen.dart:111:      case PinResult.ok:
+lib/screens/lock_screen.dart:114:      case PinResult.locked:
+lib/screens/lock_screen.dart:117:      case PinResult.wrong:
+lib/screens/lock_screen.dart:124:      case PinResult.corrupt:
+lib/screens/pin_screen.dart:64:      case PinResult.ok:
+lib/screens/pin_screen.dart:67:      case PinResult.locked:
+lib/screens/pin_screen.dart:75:      case PinResult.wrong:
+lib/screens/pin_screen.dart:82:      case PinResult.corrupt:
+lib/services/app_lock_service.dart:10:enum PinResult { ok, wrong, locked, corrupt }
+lib/services/app_lock_service.dart:15:  final PinResult result;
+lib/services/app_lock_service.dart:130:        return PinCheck(PinResult.locked, wait: remaining);
+lib/services/app_lock_service.dart:138:        return const PinCheck(PinResult.corrupt);
+lib/services/app_lock_service.dart:145:        return const PinCheck(PinResult.corrupt);
+lib/services/app_lock_service.dart:153:        return const PinCheck(PinResult.ok);
+lib/services/app_lock_service.dart:164:        return PinCheck(PinResult.locked, wait: Duration(seconds: seconds));
+lib/services/app_lock_service.dart:168:        PinResult.wrong,
+lib/services/app_lock_service.dart:173:      return const PinCheck(PinResult.corrupt);
+
+===== 4. SELURUH SWITCH PINRESULT =====
+lib/screens/lock_screen.dart-105-
+lib/screens/lock_screen.dart-106-    final check = await _lock.verifyPin(_pin);
+lib/screens/lock_screen.dart-107-
+lib/screens/lock_screen.dart-108-    if (!mounted) return;
+lib/screens/lock_screen.dart-109-
+lib/screens/lock_screen.dart:110:    switch (check.result) {
+lib/screens/lock_screen.dart:111:      case PinResult.ok:
+lib/screens/lock_screen.dart-112-        widget.onUnlocked();
+lib/screens/lock_screen.dart-113-        break;
+lib/screens/lock_screen.dart:114:      case PinResult.locked:
+lib/screens/lock_screen.dart-115-        _startWait(check.wait ?? const Duration(seconds: 30));
+lib/screens/lock_screen.dart-116-        break;
+lib/screens/lock_screen.dart:117:      case PinResult.wrong:
+lib/screens/lock_screen.dart-118-        setState(() {
+lib/screens/lock_screen.dart-119-          _busy = false;
+lib/screens/lock_screen.dart-120-          _pin = '';
+lib/screens/lock_screen.dart-121-          _message = 'PIN salah. Sisa percobaan: ${check.remainingAttempts}';
+lib/screens/lock_screen.dart-122-        });
+lib/screens/lock_screen.dart-123-        break;
+lib/screens/lock_screen.dart:124:      case PinResult.corrupt:
+lib/screens/lock_screen.dart-125-        setState(() {
+lib/screens/lock_screen.dart-126-          _busy = false;
+lib/screens/lock_screen.dart-127-          _pin = '';
+lib/screens/lock_screen.dart-128-          _message = 'Data PIN bermasalah. Gunakan opsi Lupa PIN? '
+lib/screens/lock_screen.dart-129-              'untuk verifikasi melalui kunci layar HP.';
+lib/screens/lock_screen.dart-130-        });
+lib/screens/lock_screen.dart-131-        break;
+lib/screens/lock_screen.dart-132-    }
+lib/screens/lock_screen.dart-133-  }
+lib/screens/lock_screen.dart-134-
+lib/screens/lock_screen.dart-135-  Future<void> _forgotPin() async {
+lib/screens/lock_screen.dart-136-    if (_busy) return;
+lib/screens/lock_screen.dart-137-
+lib/screens/lock_screen.dart-138-    setState(() {
+lib/screens/lock_screen.dart-139-      _busy = true;
+lib/screens/lock_screen.dart-140-      _message = null;
+lib/screens/lock_screen.dart-141-    });
+lib/screens/lock_screen.dart-142-
+lib/screens/lock_screen.dart-143-    final ok = await _lock.authenticate(
+lib/screens/lock_screen.dart-144-      reason: 'Verifikasi dengan kunci layar HP untuk mereset PIN',
+lib/screens/lock_screen.dart-145-      biometricOnly: false,
+lib/screens/lock_screen.dart-146-    );
+lib/screens/lock_screen.dart-147-
+lib/screens/lock_screen.dart-148-    if (!mounted) return;
+lib/screens/lock_screen.dart-149-
+lib/screens/lock_screen.dart-150-    setState(() {
+lib/screens/lock_screen.dart-151-      _busy = false;
+lib/screens/lock_screen.dart-152-      if (ok) {
+lib/screens/lock_screen.dart-153-        _resetPending = true;
+lib/screens/lock_screen.dart-154-      } else {
+lib/screens/lock_screen.dart-155-        _message = 'Verifikasi kunci layar gagal atau dibatalkan. '
+lib/screens/lock_screen.dart-156-            'HP harus punya kunci layar (PIN, pola, atau kata sandi).';
+lib/screens/lock_screen.dart-157-      }
+lib/screens/lock_screen.dart-158-    });
+lib/screens/lock_screen.dart-159-  }
+lib/screens/lock_screen.dart-160-
+lib/screens/lock_screen.dart-161-  Future<void> _disableAndContinue() async {
+lib/screens/lock_screen.dart-162-    try {
+lib/screens/lock_screen.dart-163-      await _lock.disable();
+lib/screens/lock_screen.dart-164-      if (!mounted) return;
+lib/screens/lock_screen.dart-165-      widget.onUnlocked();
+lib/screens/lock_screen.dart-166-    } catch (e) {
+lib/screens/lock_screen.dart-167-      debugPrint('Gagal menyimpan pemulihan kunci: $e');
+lib/screens/lock_screen.dart-168-      if (!mounted) return;
+lib/screens/lock_screen.dart-169-      ScaffoldMessenger.of(context).showSnackBar(
+--
+lib/screens/pin_screen.dart-58-
+lib/screens/pin_screen.dart-59-    final check = await AppLockService.instance.verifyPin(_pin);
+lib/screens/pin_screen.dart-60-
+lib/screens/pin_screen.dart-61-    if (!mounted) return;
+lib/screens/pin_screen.dart-62-
+lib/screens/pin_screen.dart:63:    switch (check.result) {
+lib/screens/pin_screen.dart:64:      case PinResult.ok:
+lib/screens/pin_screen.dart-65-        Navigator.pop(context, true);
+lib/screens/pin_screen.dart-66-        break;
+lib/screens/pin_screen.dart:67:      case PinResult.locked:
+lib/screens/pin_screen.dart-68-        setState(() {
+lib/screens/pin_screen.dart-69-          _busy = false;
+lib/screens/pin_screen.dart-70-          _pin = '';
+lib/screens/pin_screen.dart-71-          _message = 'Terlalu banyak percobaan. '
+lib/screens/pin_screen.dart-72-              'Coba lagi dalam ${check.wait?.inSeconds ?? 30} detik.';
+lib/screens/pin_screen.dart-73-        });
+lib/screens/pin_screen.dart-74-        break;
+lib/screens/pin_screen.dart:75:      case PinResult.wrong:
+lib/screens/pin_screen.dart-76-        setState(() {
+lib/screens/pin_screen.dart-77-          _busy = false;
+lib/screens/pin_screen.dart-78-          _pin = '';
+lib/screens/pin_screen.dart-79-          _message = 'PIN salah. Sisa percobaan: ${check.remainingAttempts}';
+lib/screens/pin_screen.dart-80-        });
+lib/screens/pin_screen.dart-81-        break;
+lib/screens/pin_screen.dart:82:      case PinResult.corrupt:
+lib/screens/pin_screen.dart-83-        setState(() {
+lib/screens/pin_screen.dart-84-          _busy = false;
+lib/screens/pin_screen.dart-85-          _pin = '';
+lib/screens/pin_screen.dart-86-          _message = 'Data PIN bermasalah. Pulihkan melalui kunci layar HP.';
+lib/screens/pin_screen.dart-87-        });
+lib/screens/pin_screen.dart-88-        break;
+lib/screens/pin_screen.dart-89-    }
+lib/screens/pin_screen.dart-90-  }
+lib/screens/pin_screen.dart-91-
+lib/screens/pin_screen.dart-92-  @override
+lib/screens/pin_screen.dart-93-  Widget build(BuildContext context) {
+lib/screens/pin_screen.dart-94-    final theme = Theme.of(context);
+lib/screens/pin_screen.dart-95-
+lib/screens/pin_screen.dart-96-    return Scaffold(
+lib/screens/pin_screen.dart-97-      appBar: AppBar(title: Text(widget.title)),
+lib/screens/pin_screen.dart-98-      body: SafeArea(
+lib/screens/pin_screen.dart-99-        child: Center(
+lib/screens/pin_screen.dart-100-          child: SingleChildScrollView(
+lib/screens/pin_screen.dart-101-            padding: const EdgeInsets.all(24),
+lib/screens/pin_screen.dart-102-            child: Column(
+lib/screens/pin_screen.dart-103-              mainAxisSize: MainAxisSize.min,
+lib/screens/pin_screen.dart-104-              children: [
+lib/screens/pin_screen.dart-105-                Text(_prompt, style: theme.textTheme.titleMedium),
+lib/screens/pin_screen.dart-106-                SizedBox(
+lib/screens/pin_screen.dart-107-                  height: 40,
+lib/screens/pin_screen.dart-108-                  child: Center(
+lib/screens/pin_screen.dart-109-                    child: _message == null
+lib/screens/pin_screen.dart-110-                        ? null
+lib/screens/pin_screen.dart-111-                        : Text(
+lib/screens/pin_screen.dart-112-                            _message!,
+lib/screens/pin_screen.dart-113-                            textAlign: TextAlign.center,
+lib/screens/pin_screen.dart-114-                            style: TextStyle(color: theme.colorScheme.error),
+lib/screens/pin_screen.dart-115-                          ),
+lib/screens/pin_screen.dart-116-                  ),
+lib/screens/pin_screen.dart-117-                ),
+lib/screens/pin_screen.dart-118-                PinPad(
+lib/screens/pin_screen.dart-119-                  pin: _pin,
+lib/screens/pin_screen.dart-120-                  enabled: !_busy,
+lib/screens/pin_screen.dart-121-                  onChanged: (value) => setState(() {
+lib/screens/pin_screen.dart-122-                    _pin = value;
+lib/screens/pin_screen.dart-123-                    _message = null;
+lib/screens/pin_screen.dart-124-                  }),
+lib/screens/pin_screen.dart-125-                  onSubmit: _submit,
+lib/screens/pin_screen.dart-126-                ),
+lib/screens/pin_screen.dart-127-              ],
+
+===== 5. VERIFY PIN =====
+
+    final prefs = SharedPreferencesAsync();
+    await prefs.setString(_saltKey, base64Encode(salt));
+    await prefs.setString(_hashKey, base64Encode(hash));
+    await prefs.setBool(_enabledKey, true);
+    await prefs.setInt(_failsKey, 0);
+    await prefs.setInt(_untilKey, 0);
+
+    _enabled = true;
+    _loaded = true;
+    notifyListeners();
+  }
+
+  Future<Duration?> lockoutRemaining() async {
+    try {
+      final until = (await SharedPreferencesAsync().getInt(_untilKey)) ?? 0;
+      final now = DateTime.now().millisecondsSinceEpoch;
+      if (until <= now) return null;
+      return Duration(seconds: ((until - now) / 1000).ceil());
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<PinCheck> verifyPin(String pin) async {
+    try {
+      final prefs = SharedPreferencesAsync();
+
+      final remaining = await lockoutRemaining();
+      if (remaining != null) {
+        return PinCheck(PinResult.locked, wait: remaining);
+      }
+
+      final saltText = await prefs.getString(_saltKey);
+      final hashText = await prefs.getString(_hashKey);
+
+      // Data autentikasi hilang: jangan menghitungnya sebagai PIN salah.
+      if (saltText == null || hashText == null) {
+        return const PinCheck(PinResult.corrupt);
+      }
+
+      final salt = base64Decode(saltText);
+      final storedHash = base64Decode(hashText);
+
+      if (salt.length != 16 || storedHash.length != 32) {
+        return const PinCheck(PinResult.corrupt);
+      }
+
+      final actual = await _hash(pin, salt);
+
+      if (_sameBytes(actual, storedHash)) {
+        await prefs.setInt(_failsKey, 0);
+        await prefs.setInt(_untilKey, 0);
+        return const PinCheck(PinResult.ok);
+      }
+
+      final fails = ((await prefs.getInt(_failsKey)) ?? 0) + 1;
+      await prefs.setInt(_failsKey, fails);
+
+      if (fails % maxFreeAttempts == 0) {
+        final round = fails ~/ maxFreeAttempts;
+        final seconds = min(30 * pow(2, round - 1).toInt(), 600);
+        final until = DateTime.now().millisecondsSinceEpoch + seconds * 1000;
+        await prefs.setInt(_untilKey, until);
+        return PinCheck(PinResult.locked, wait: Duration(seconds: seconds));
+      }
+
+      return PinCheck(
+        PinResult.wrong,
+        remainingAttempts: maxFreeAttempts - (fails % maxFreeAttempts),
+      );
+    } catch (e) {
+      debugPrint('Verifikasi PIN gagal membaca/menulis penyimpanan: $e');
+      return const PinCheck(PinResult.corrupt);
+    }
+  }
+
+  Future<void> disable() async {
+    // Nonaktifkan flag terakhir agar kegagalan operasi tidak membuka gate.
+    final prefs = SharedPreferencesAsync();
+    await prefs.setBool(_bioKey, false);
+    await prefs.remove(_saltKey);
+    await prefs.remove(_hashKey);
+    await prefs.setInt(_failsKey, 0);
+    await prefs.setInt(_untilKey, 0);
+    await prefs.setBool(_enabledKey, false);
+
+===== 6. DISABLE SERVICE =====
+  }
+
+  Future<void> disable() async {
+    // Nonaktifkan flag terakhir agar kegagalan operasi tidak membuka gate.
+    final prefs = SharedPreferencesAsync();
+    await prefs.setBool(_bioKey, false);
+    await prefs.remove(_saltKey);
+    await prefs.remove(_hashKey);
+    await prefs.setInt(_failsKey, 0);
+    await prefs.setInt(_untilKey, 0);
+    await prefs.setBool(_enabledKey, false);
+
+    _enabled = false;
+    _biometric = false;
+    notifyListeners();
+  }
+
+  Future<void> setBiometric(bool value) async {
+    await SharedPreferencesAsync().setBool(_bioKey, value);
+    _biometric = value;
+    notifyListeners();
+  }
+
+  /// Ada sidik jari / wajah yang terdaftar di HP.
+  Future<bool> biometricAvailable() async {
+    try {
+      final types = await _auth.getAvailableBiometrics();
+      return types.isNotEmpty;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// [biometricOnly] false mengizinkan PIN / pola / kata sandi layar HP.
+  Future<bool> authenticate({
+    required String reason,
+    required bool biometricOnly,
+  }) async {
+    try {
+      return await _auth.authenticate(
+        localizedReason: reason,
+        biometricOnly: biometricOnly,
+        persistAcrossBackgrounding: true,
+      );
+    } catch (e) {
+      debugPrint('Autentikasi perangkat gagal: $e');
+      return false;
+    }
+  }
+}
+
+===== 7. LOAD SERVICE =====
+import 'dart:convert';
+import 'dart:math';
+import 'dart:typed_data';
+
+import 'package:cryptography/cryptography.dart';
+import 'package:flutter/foundation.dart';
+import 'package:local_auth/local_auth.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+enum PinResult { ok, wrong, locked, corrupt }
+
+class PinCheck {
+  const PinCheck(this.result, {this.remainingAttempts = 0, this.wait});
+
+  final PinResult result;
+  final int remainingAttempts;
+  final Duration? wait;
+}
+
+/// Kunci aplikasi: PIN 4-6 angka (disimpan sebagai hash PBKDF2 + salt acak)
+/// dan opsi sidik jari / kunci layar lewat local_auth.
+class AppLockService extends ChangeNotifier {
+  AppLockService._();
+
+  static final AppLockService instance = AppLockService._();
+
+  static const int minPinLength = 4;
+  static const int maxPinLength = 6;
+  static const int maxFreeAttempts = 5;
+
+  static const int _iterations = 50000;
+
+  static const String _enabledKey = 'app_lock_enabled';
+  static const String _saltKey = 'app_lock_salt';
+  static const String _hashKey = 'app_lock_hash';
+  static const String _bioKey = 'app_lock_bio';
+  static const String _failsKey = 'app_lock_fails';
+  static const String _untilKey = 'app_lock_until';
+
+  final Pbkdf2 _kdf = Pbkdf2(
+    macAlgorithm: Hmac.sha256(),
+    iterations: _iterations,
+    bits: 256,
+  );
+
+  final LocalAuthentication _auth = LocalAuthentication();
+
+  bool _loaded = false;
+  bool _enabled = false;
+  bool _biometric = false;
+
+  bool get enabled => _enabled;
+  bool get biometricEnabled => _enabled && _biometric;
+
+  Future<void> load() async {
+    if (_loaded) return;
+
+    // Jangan mengubah status menjadi nonaktif jika penyimpanan gagal dibaca.
+    // Error diteruskan ke AppLockGate agar aplikasi tidak terbuka tanpa kunci.
+    final prefs = SharedPreferencesAsync();
+    final enabled = (await prefs.getBool(_enabledKey)) ?? false;
+    final biometric = (await prefs.getBool(_bioKey)) ?? false;
+    final hash = await prefs.getString(_hashKey);
+
+    if (enabled && hash == null) {
+      throw StateError(
+        'Kunci aktif tetapi hash PIN tidak ditemukan. Status keamanan perlu diperiksa.',
+      );
+    }
+
+    _enabled = enabled;
+    _biometric = biometric;
+    _loaded = true;
+  }
+
+  Future<Uint8List> _hash(String pin, List<int> salt) async {
+    final key = await _kdf.deriveKeyFromPassword(password: pin, nonce: salt);
+    return Uint8List.fromList(await key.extractBytes());
+  }
+
+  bool _sameBytes(List<int> a, List<int> b) {
+    if (a.length != b.length) return false;
+    var diff = 0;
+    for (var i = 0; i < a.length; i++) {
+      diff |= a[i] ^ b[i];
+    }
+    return diff == 0;
+  }
+
+  Future<void> setPin(String pin) async {
+    if (!RegExp(r'^\d{4,6}$').hasMatch(pin)) {
+      throw ArgumentError('PIN harus 4 sampai 6 angka.');
+    }
+
+    final random = Random.secure();
+    final salt = Uint8List.fromList(
+      List<int>.generate(16, (_) => random.nextInt(256)),
+    );
+    final hash = await _hash(pin, salt);
+
+    final prefs = SharedPreferencesAsync();
+    await prefs.setString(_saltKey, base64Encode(salt));
+    await prefs.setString(_hashKey, base64Encode(hash));
+    await prefs.setBool(_enabledKey, true);
+    await prefs.setInt(_failsKey, 0);
+
+===== 8. PEMULIHAN LOCK SCREEN =====
+lib/screens/lock_screen.dart-127-          _pin = '';
+lib/screens/lock_screen.dart-128-          _message = 'Data PIN bermasalah. Gunakan opsi Lupa PIN? '
+lib/screens/lock_screen.dart-129-              'untuk verifikasi melalui kunci layar HP.';
+lib/screens/lock_screen.dart-130-        });
+lib/screens/lock_screen.dart-131-        break;
+lib/screens/lock_screen.dart-132-    }
+lib/screens/lock_screen.dart-133-  }
+lib/screens/lock_screen.dart-134-
+lib/screens/lock_screen.dart:135:  Future<void> _forgotPin() async {
+lib/screens/lock_screen.dart-136-    if (_busy) return;
+lib/screens/lock_screen.dart-137-
+lib/screens/lock_screen.dart-138-    setState(() {
+lib/screens/lock_screen.dart-139-      _busy = true;
+lib/screens/lock_screen.dart-140-      _message = null;
+lib/screens/lock_screen.dart-141-    });
+lib/screens/lock_screen.dart-142-
+lib/screens/lock_screen.dart-143-    final ok = await _lock.authenticate(
+lib/screens/lock_screen.dart-144-      reason: 'Verifikasi dengan kunci layar HP untuk mereset PIN',
+lib/screens/lock_screen.dart-145-      biometricOnly: false,
+lib/screens/lock_screen.dart-146-    );
+lib/screens/lock_screen.dart-147-
+lib/screens/lock_screen.dart-148-    if (!mounted) return;
+lib/screens/lock_screen.dart-149-
+lib/screens/lock_screen.dart-150-    setState(() {
+lib/screens/lock_screen.dart-151-      _busy = false;
+lib/screens/lock_screen.dart-152-      if (ok) {
+lib/screens/lock_screen.dart-153-        _resetPending = true;
+lib/screens/lock_screen.dart-154-      } else {
+lib/screens/lock_screen.dart-155-        _message = 'Verifikasi kunci layar gagal atau dibatalkan. '
+lib/screens/lock_screen.dart-156-            'HP harus punya kunci layar (PIN, pola, atau kata sandi).';
+lib/screens/lock_screen.dart-157-      }
+lib/screens/lock_screen.dart-158-    });
+lib/screens/lock_screen.dart-159-  }
+lib/screens/lock_screen.dart-160-
+lib/screens/lock_screen.dart:161:  Future<void> _disableAndContinue() async {
+lib/screens/lock_screen.dart-162-    try {
+lib/screens/lock_screen.dart-163-      await _lock.disable();
+lib/screens/lock_screen.dart-164-      if (!mounted) return;
+lib/screens/lock_screen.dart-165-      widget.onUnlocked();
+lib/screens/lock_screen.dart-166-    } catch (e) {
+lib/screens/lock_screen.dart-167-      debugPrint('Gagal menyimpan pemulihan kunci: $e');
+lib/screens/lock_screen.dart-168-      if (!mounted) return;
+lib/screens/lock_screen.dart-169-      ScaffoldMessenger.of(context).showSnackBar(
+lib/screens/lock_screen.dart-170-        const SnackBar(
+lib/screens/lock_screen.dart-171-          content: Text(
+lib/screens/lock_screen.dart-172-            'Pemulihan gagal disimpan. Kunci tetap aktif. Coba lagi.',
+lib/screens/lock_screen.dart-173-          ),
+lib/screens/lock_screen.dart-174-        ),
+lib/screens/lock_screen.dart-175-      );
+lib/screens/lock_screen.dart-176-    }
+lib/screens/lock_screen.dart-177-  }
+lib/screens/lock_screen.dart-178-
+lib/screens/lock_screen.dart-179-  @override
+lib/screens/lock_screen.dart-180-  Widget build(BuildContext context) {
+lib/screens/lock_screen.dart-181-    final theme = Theme.of(context);
+lib/screens/lock_screen.dart-182-
+lib/screens/lock_screen.dart-183-    final Widget content;
+lib/screens/lock_screen.dart-184-
+lib/screens/lock_screen.dart-185-    if (_resetPending) {
+lib/screens/lock_screen.dart-186-      content = Column(
+lib/screens/lock_screen.dart-187-        mainAxisSize: MainAxisSize.min,
+lib/screens/lock_screen.dart-188-        children: [
+lib/screens/lock_screen.dart-189-          const Text(
+lib/screens/lock_screen.dart-190-            'Kunci layar HP terverifikasi.\n\n'
+lib/screens/lock_screen.dart-191-            'Kunci aplikasi akan dimatikan. Kamu bisa membuat PIN baru di '
+lib/screens/lock_screen.dart-192-            'Pengaturan. Data tidak dihapus.',
+lib/screens/lock_screen.dart-193-            textAlign: TextAlign.center,
+lib/screens/lock_screen.dart-194-          ),
+lib/screens/lock_screen.dart-195-          const SizedBox(height: 24),
+lib/screens/lock_screen.dart-196-          FilledButton(
+lib/screens/lock_screen.dart:197:            onPressed: _disableAndContinue,
+lib/screens/lock_screen.dart-198-            child: const Text('Matikan kunci dan lanjut'),
+lib/screens/lock_screen.dart-199-          ),
+lib/screens/lock_screen.dart-200-          TextButton(
+lib/screens/lock_screen.dart-201-            onPressed: () => setState(() => _resetPending = false),
+lib/screens/lock_screen.dart-202-            child: const Text('Batal'),
+lib/screens/lock_screen.dart-203-          ),
+lib/screens/lock_screen.dart-204-        ],
+lib/screens/lock_screen.dart-205-      );
+lib/screens/lock_screen.dart-206-    } else {
+lib/screens/lock_screen.dart-207-      final wait = _wait;
+lib/screens/lock_screen.dart-208-
+lib/screens/lock_screen.dart-209-      content = Column(
+lib/screens/lock_screen.dart-210-        mainAxisSize: MainAxisSize.min,
+lib/screens/lock_screen.dart-211-        children: [
+lib/screens/lock_screen.dart-212-          Text(
+lib/screens/lock_screen.dart-213-            wait != null
+lib/screens/lock_screen.dart-214-                ? 'Terlalu banyak percobaan salah.\n'
+lib/screens/lock_screen.dart-215-                    'Coba lagi dalam ${wait.inSeconds} detik.'
+lib/screens/lock_screen.dart-216-                : 'Masukkan PIN',
+lib/screens/lock_screen.dart-217-            textAlign: TextAlign.center,
+lib/screens/lock_screen.dart-218-            style: theme.textTheme.titleMedium,
+lib/screens/lock_screen.dart-219-          ),
+lib/screens/lock_screen.dart-220-          SizedBox(
+lib/screens/lock_screen.dart-221-            height: 40,
+lib/screens/lock_screen.dart-222-            child: Center(
+lib/screens/lock_screen.dart-223-              child: _message == null
+lib/screens/lock_screen.dart-224-                  ? null
+lib/screens/lock_screen.dart-225-                  : Text(
+lib/screens/lock_screen.dart-226-                      _message!,
+lib/screens/lock_screen.dart-227-                      textAlign: TextAlign.center,
+lib/screens/lock_screen.dart-228-                      style: TextStyle(color: theme.colorScheme.error),
+lib/screens/lock_screen.dart-229-                    ),
+lib/screens/lock_screen.dart-230-            ),
+lib/screens/lock_screen.dart-231-          ),
+lib/screens/lock_screen.dart-232-          PinPad(
+lib/screens/lock_screen.dart-233-            pin: _pin,
+lib/screens/lock_screen.dart-234-            enabled: !_busy && wait == null,
+lib/screens/lock_screen.dart-235-            onChanged: (value) => setState(() {
+lib/screens/lock_screen.dart-236-              _pin = value;
+lib/screens/lock_screen.dart-237-              _message = null;
+lib/screens/lock_screen.dart-238-            }),
+lib/screens/lock_screen.dart-239-            onSubmit: _submit,
+lib/screens/lock_screen.dart-240-            onBiometric: _lock.biometricEnabled ? _useBiometric : null,
+lib/screens/lock_screen.dart-241-          ),
+lib/screens/lock_screen.dart-242-          const SizedBox(height: 8),
+lib/screens/lock_screen.dart-243-          TextButton(
+lib/screens/lock_screen.dart:244:            onPressed: _busy ? null : _forgotPin,
+lib/screens/lock_screen.dart-245-            child: const Text('Lupa PIN?'),
+lib/screens/lock_screen.dart-246-          ),
+lib/screens/lock_screen.dart-247-        ],
+lib/screens/lock_screen.dart-248-      );
+lib/screens/lock_screen.dart-249-    }
+lib/screens/lock_screen.dart-250-
+lib/screens/lock_screen.dart-251-    return Scaffold(
+lib/screens/lock_screen.dart-252-      body: SafeArea(
+lib/screens/lock_screen.dart-253-        child: Center(
+lib/screens/lock_screen.dart-254-          child: SingleChildScrollView(
+lib/screens/lock_screen.dart-255-            padding: const EdgeInsets.all(24),
+lib/screens/lock_screen.dart-256-            child: Column(
+lib/screens/lock_screen.dart-257-              mainAxisSize: MainAxisSize.min,
+lib/screens/lock_screen.dart-258-              children: [
+lib/screens/lock_screen.dart-259-                Icon(Icons.lock_outline, size: 48, color: theme.colorScheme.primary),
+lib/screens/lock_screen.dart-260-                const SizedBox(height: 12),
+lib/screens/lock_screen.dart-261-                Text(
+lib/screens/lock_screen.dart-262-                  'Buku Utang Warung',
+lib/screens/lock_screen.dart-263-                  style: theme.textTheme.headlineSmall,
+lib/screens/lock_screen.dart-264-                ),
+lib/screens/lock_screen.dart-265-                const SizedBox(height: 24),
+lib/screens/lock_screen.dart-266-                content,
+lib/screens/lock_screen.dart-267-              ],
+lib/screens/lock_screen.dart-268-            ),
+lib/screens/lock_screen.dart-269-          ),
+lib/screens/lock_screen.dart-270-        ),
+lib/screens/lock_screen.dart-271-      ),
+lib/screens/lock_screen.dart-272-    );
+lib/screens/lock_screen.dart-273-  }
+lib/screens/lock_screen.dart-274-}
+--
+lib/widgets/app_lock_gate.dart-77-    setState(() {
+lib/widgets/app_lock_gate.dart-78-      _ready = false;
+lib/widgets/app_lock_gate.dart-79-      _loadFailed = false;
+lib/widgets/app_lock_gate.dart-80-      _recoveryMessage = null;
+lib/widgets/app_lock_gate.dart-81-    });
+lib/widgets/app_lock_gate.dart-82-    await _init();
+lib/widgets/app_lock_gate.dart-83-  }
+lib/widgets/app_lock_gate.dart-84-
+lib/widgets/app_lock_gate.dart:85:  Future<void> _recoverLock() async {
+lib/widgets/app_lock_gate.dart-86-    if (_recovering) return;
+lib/widgets/app_lock_gate.dart-87-
+lib/widgets/app_lock_gate.dart-88-    setState(() {
+lib/widgets/app_lock_gate.dart-89-      _recovering = true;
+lib/widgets/app_lock_gate.dart-90-      _recoveryMessage = null;
+lib/widgets/app_lock_gate.dart-91-    });
+lib/widgets/app_lock_gate.dart-92-
+lib/widgets/app_lock_gate.dart-93-    try {
+lib/widgets/app_lock_gate.dart-94-      final verified = await _service.authenticate(
+lib/widgets/app_lock_gate.dart-95-        reason: 'Verifikasi kunci layar HP untuk memulihkan kunci aplikasi',
+lib/widgets/app_lock_gate.dart-96-        biometricOnly: false,
+lib/widgets/app_lock_gate.dart-97-      );
+lib/widgets/app_lock_gate.dart-98-
+lib/widgets/app_lock_gate.dart-99-      if (!mounted) return;
+lib/widgets/app_lock_gate.dart-100-
+lib/widgets/app_lock_gate.dart-101-      if (!verified) {
+lib/widgets/app_lock_gate.dart-102-        setState(() {
+lib/widgets/app_lock_gate.dart-103-          _recovering = false;
+lib/widgets/app_lock_gate.dart-104-          _recoveryMessage =
+lib/widgets/app_lock_gate.dart-105-              'Verifikasi dibatalkan atau gagal. Kunci aplikasi tetap aktif.';
+lib/widgets/app_lock_gate.dart-106-        });
+lib/widgets/app_lock_gate.dart-107-        return;
+lib/widgets/app_lock_gate.dart-108-      }
+lib/widgets/app_lock_gate.dart-109-
+lib/widgets/app_lock_gate.dart-110-      final approved = await showDialog<bool>(
+lib/widgets/app_lock_gate.dart-111-        context: context,
+lib/widgets/app_lock_gate.dart-112-        barrierDismissible: false,
+lib/widgets/app_lock_gate.dart-113-        builder: (dialogContext) => AlertDialog(
+lib/widgets/app_lock_gate.dart-114-          title: const Text('Pulihkan kunci aplikasi?'),
+lib/widgets/app_lock_gate.dart-115-          content: const Text(
+lib/widgets/app_lock_gate.dart-116-            'Status PIN aplikasi yang bermasalah akan dinonaktifkan. '
+lib/widgets/app_lock_gate.dart-117-            'Database pelanggan dan transaksi tidak dihapus. '
+lib/widgets/app_lock_gate.dart-118-            'Buat PIN baru dari Pengaturan setelah masuk.',
+lib/widgets/app_lock_gate.dart-119-          ),
+lib/widgets/app_lock_gate.dart-120-          actions: [
+lib/widgets/app_lock_gate.dart-121-            TextButton(
+lib/widgets/app_lock_gate.dart-122-              onPressed: () => Navigator.pop(dialogContext, false),
+lib/widgets/app_lock_gate.dart-123-              child: const Text('Batal'),
+lib/widgets/app_lock_gate.dart-124-            ),
+lib/widgets/app_lock_gate.dart-125-            FilledButton(
+lib/widgets/app_lock_gate.dart-126-              onPressed: () => Navigator.pop(dialogContext, true),
+lib/widgets/app_lock_gate.dart-127-              child: const Text('Setujui pemulihan'),
+lib/widgets/app_lock_gate.dart-128-            ),
+lib/widgets/app_lock_gate.dart-129-          ],
+lib/widgets/app_lock_gate.dart-130-        ),
+lib/widgets/app_lock_gate.dart-131-      );
+lib/widgets/app_lock_gate.dart-132-
+lib/widgets/app_lock_gate.dart-133-      if (!mounted) return;
+lib/widgets/app_lock_gate.dart-134-
+lib/widgets/app_lock_gate.dart-135-      if (approved != true) {
+lib/widgets/app_lock_gate.dart-136-        setState(() => _recovering = false);
+lib/widgets/app_lock_gate.dart-137-        return;
+lib/widgets/app_lock_gate.dart-138-      }
+lib/widgets/app_lock_gate.dart-139-
+lib/widgets/app_lock_gate.dart-140-      await _service.disable();
+--
+lib/widgets/app_lock_gate.dart-219-                      textAlign: TextAlign.center,
+lib/widgets/app_lock_gate.dart-220-                      style: TextStyle(
+lib/widgets/app_lock_gate.dart-221-                        color: Theme.of(context).colorScheme.error,
+lib/widgets/app_lock_gate.dart-222-                      ),
+lib/widgets/app_lock_gate.dart-223-                    ),
+lib/widgets/app_lock_gate.dart-224-                  ],
+lib/widgets/app_lock_gate.dart-225-                  const SizedBox(height: 20),
+lib/widgets/app_lock_gate.dart-226-                  FilledButton.icon(
+lib/widgets/app_lock_gate.dart:227:                    onPressed: _recovering ? null : _recoverLock,
+lib/widgets/app_lock_gate.dart-228-                    icon: _recovering
+lib/widgets/app_lock_gate.dart-229-                        ? const SizedBox(
+lib/widgets/app_lock_gate.dart-230-                            width: 18,
+lib/widgets/app_lock_gate.dart-231-                            height: 18,
+lib/widgets/app_lock_gate.dart-232-                            child: CircularProgressIndicator(strokeWidth: 2),
+lib/widgets/app_lock_gate.dart-233-                          )
+lib/widgets/app_lock_gate.dart-234-                        : const Icon(Icons.verified_user_outlined),
+lib/widgets/app_lock_gate.dart-235-                    label: Text(
+lib/widgets/app_lock_gate.dart-236-                      _recovering
+lib/widgets/app_lock_gate.dart-237-                          ? 'Memverifikasi...'
+lib/widgets/app_lock_gate.dart-238-                          : 'Pulihkan dengan kunci layar HP',
+lib/widgets/app_lock_gate.dart-239-                    ),
+lib/widgets/app_lock_gate.dart-240-                  ),
+lib/widgets/app_lock_gate.dart-241-                  const SizedBox(height: 8),
+lib/widgets/app_lock_gate.dart-242-                  OutlinedButton.icon(
+lib/widgets/app_lock_gate.dart-243-                    onPressed: _recovering ? null : _retryLoad,
+lib/widgets/app_lock_gate.dart-244-                    icon: const Icon(Icons.refresh),
+lib/widgets/app_lock_gate.dart-245-                    label: const Text('Coba baca ulang'),
+lib/widgets/app_lock_gate.dart-246-                  ),
+lib/widgets/app_lock_gate.dart-247-                ],
+lib/widgets/app_lock_gate.dart-248-              ),
+lib/widgets/app_lock_gate.dart-249-            ),
+lib/widgets/app_lock_gate.dart-250-          ),
+lib/widgets/app_lock_gate.dart-251-        ),
+lib/widgets/app_lock_gate.dart-252-      );
+lib/widgets/app_lock_gate.dart-253-    }
+lib/widgets/app_lock_gate.dart-254-
+lib/widgets/app_lock_gate.dart-255-    final hidden = _locked;
+lib/widgets/app_lock_gate.dart-256-
+lib/widgets/app_lock_gate.dart-257-    return Stack(
+lib/widgets/app_lock_gate.dart-258-      fit: StackFit.expand,
+lib/widgets/app_lock_gate.dart-259-      children: [
+lib/widgets/app_lock_gate.dart-260-        ExcludeSemantics(excluding: hidden, child: widget.child),
+lib/widgets/app_lock_gate.dart-261-        if (_locked)
+lib/widgets/app_lock_gate.dart-262-          Positioned.fill(
+lib/widgets/app_lock_gate.dart-263-            child: LockScreen(
+lib/widgets/app_lock_gate.dart-264-              key: const ValueKey('app-lock-screen'),
+lib/widgets/app_lock_gate.dart-265-              onUnlocked: () => setState(() => _locked = false),
+lib/widgets/app_lock_gate.dart-266-            ),
+lib/widgets/app_lock_gate.dart-267-          ),
+lib/widgets/app_lock_gate.dart-268-      ],
+lib/widgets/app_lock_gate.dart-269-    );
+lib/widgets/app_lock_gate.dart-270-  }
+lib/widgets/app_lock_gate.dart-271-}
+
+===== 9. PIN SCREEN =====
+      if (_first == _pin) {
+        Navigator.pop(context, _pin);
+      } else {
+        setState(() {
+          _first = null;
+          _pin = '';
+          _message = 'PIN tidak sama. Ulangi dari awal.';
+        });
+      }
+      return;
+    }
+
+    setState(() => _busy = true);
+
+    final check = await AppLockService.instance.verifyPin(_pin);
+
+    if (!mounted) return;
+
+    switch (check.result) {
+      case PinResult.ok:
+        Navigator.pop(context, true);
+        break;
+      case PinResult.locked:
+        setState(() {
+          _busy = false;
+          _pin = '';
+          _message = 'Terlalu banyak percobaan. '
+              'Coba lagi dalam ${check.wait?.inSeconds ?? 30} detik.';
+        });
+        break;
+      case PinResult.wrong:
+        setState(() {
+          _busy = false;
+          _pin = '';
+          _message = 'PIN salah. Sisa percobaan: ${check.remainingAttempts}';
+        });
+        break;
+      case PinResult.corrupt:
+        setState(() {
+          _busy = false;
+          _pin = '';
+          _message = 'Data PIN bermasalah. Pulihkan melalui kunci layar HP.';
+        });
+        break;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Scaffold(
+      appBar: AppBar(title: Text(widget.title)),
+      body: SafeArea(
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(_prompt, style: theme.textTheme.titleMedium),
+                SizedBox(
+                  height: 40,
+                  child: Center(
+                    child: _message == null
+                        ? null
+
+===== 10. APP LOCK SETTINGS =====
+import 'package:flutter/material.dart';
+
+import '../screens/pin_screen.dart';
+import '../services/app_lock_service.dart';
+
+/// Kartu pengaturan kunci aplikasi untuk layar Pengaturan.
+class AppLockSettingsCard extends StatefulWidget {
+  const AppLockSettingsCard({super.key});
+
+  @override
+  State<AppLockSettingsCard> createState() => _AppLockSettingsCardState();
+}
+
+class _AppLockSettingsCardState extends State<AppLockSettingsCard> {
+  final AppLockService _lock = AppLockService.instance;
+
+  bool _enabled = false;
+  bool _biometric = false;
+  bool _biometricAvailable = false;
+  bool _busy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _refresh();
+  }
+
+  Future<void> _refresh() async {
+    await _lock.load();
+    final available = await _lock.biometricAvailable();
+    if (!mounted) return;
+
+    setState(() {
+      _enabled = _lock.enabled;
+      _biometric = _lock.biometricEnabled;
+      _biometricAvailable = available;
+    });
+  }
+
+  void _snack(String text) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
+  }
+
+  Future<String?> _createPin(String title) {
+    return Navigator.push<String>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => PinScreen(mode: PinMode.create, title: title),
+      ),
+    );
+  }
+
+  Future<bool> _verifyPin(String title) async {
+    final ok = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => PinScreen(mode: PinMode.verify, title: title),
+      ),
+    );
+    return ok == true;
+  }
+
+  Future<void> _toggleLock(bool on) async {
+    if (_busy) return;
+    setState(() => _busy = true);
+
+    try {
+      if (on) {
+        final pin = await _createPin('Buat PIN');
+        if (pin == null) return;
+
+        await _lock.setPin(pin);
+        _snack('Kunci aplikasi aktif.');
+      } else {
+        final ok = await _verifyPin('Masukkan PIN untuk mematikan kunci');
+        if (!ok) return;
+
+        await _lock.disable();
+        _snack('Kunci aplikasi dimatikan.');
+      }
+    } catch (e) {
+      _snack('Gagal mengubah kunci aplikasi: $e');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+      await _refresh();
+    }
+  }
+
+  Future<void> _changePin() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+
+    try {
+      final ok = await _verifyPin('Masukkan PIN saat ini');
+      if (!ok || !mounted) return;
+
+      final pin = await _createPin('Buat PIN baru');
+      if (pin == null) return;
+
+      await _lock.setPin(pin);
+      _snack('PIN berhasil diubah.');
+    } catch (e) {
+      _snack('Gagal mengubah PIN: $e');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+      await _refresh();
+    }
+  }
+
+  Future<void> _toggleBiometric(bool on) async {
+    if (_busy) return;
+    setState(() => _busy = true);
+
+    try {
+      if (on) {
+        final ok = await _lock.authenticate(
+          reason: 'Aktifkan buka dengan sidik jari',
+          biometricOnly: true,
+        );
+
+        if (!ok) {
+          _snack('Verifikasi sidik jari gagal atau dibatalkan.');
+          return;
+        }
+      }
+
+      await _lock.setBiometric(on);
+    } catch (e) {
+      _snack('Gagal mengubah pengaturan sidik jari: $e');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+      await _refresh();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: Icon(Icons.lock_outline),
+              title: Text('Kunci Aplikasi'),
+              subtitle: Text('Minta PIN atau sidik jari saat app dibuka.'),
+            ),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Kunci dengan PIN'),
+              value: _enabled,
+              onChanged: _busy ? null : _toggleLock,
+            ),
+            if (_enabled) ...[
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Buka dengan sidik jari'),
+                subtitle: Text(
+                  _biometricAvailable
+                      ? 'PIN tetap bisa dipakai kapan saja.'
+                      : 'Belum ada sidik jari yang terdaftar di HP.',
+                ),
+                value: _biometric,
+                onChanged: _busy || !_biometricAvailable ? null : _toggleBiometric,
+              ),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Ubah PIN'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: _busy ? null : _changePin,
+              ),
+            ],
+            const SizedBox(height: 8),
+            const Text(
+              'Kalau lupa PIN, ketuk "Lupa PIN?" di layar kunci lalu '
+              'verifikasi dengan kunci layar HP. Data tidak dihapus. '
+              'Kunci ini menahan orang lain membuka app, tetapi tidak '
+              'mengenkripsi database di HP.',
+              style: TextStyle(fontSize: 12),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+===== 11. DEPENDENCIES =====
+14-  url_launcher: ^6.3.0
+15-  file_picker: ^12.3.0
+16:  local_auth: ^3.0.0
+17-
+18-  google_sign_in: ^7.2.0
+19-  googleapis: ^19.0.0
+20-  extension_google_sign_in_as_googleapis_auth: ^3.0.0
+21:  cryptography: ^2.7.0
+22:  shared_preferences: 2.3.1
+23-
+24-dev_dependencies:
+25-  flutter_test:
+
+===== 12. FLUTTER / DART AVAILABILITY =====
+Flutter tidak tersedia di Termux.
+Dart tidak tersedia di Termux.
+
+===== 13. SELESAI =====
+Report: /data/data/com.termux/files/home/review/app_lock_integrity_audit_20261116_211349.txt
