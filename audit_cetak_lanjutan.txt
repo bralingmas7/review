@@ -1,0 +1,352 @@
+===== CUSTOMER SCREEN: FUNGSI REKAP =====
+        ],
+      ),
+    );
+
+    if (send != true || !mounted) return;
+
+    final messageSettings = await ShopMessageSettings.load();
+    final msg = buildSettlementReceipt(
+      name: c.name,
+      txns: cycle,
+      shopName: messageSettings.shopName,
+      header: messageSettings.header,
+      footer: messageSettings.footer,
+    );
+    var opened = false;
+
+    try {
+      opened = await launchUrl(
+        waUri(c.phone, msg),
+        mode: LaunchMode.externalApplication,
+      );
+    } catch (_) {
+      opened = false;
+    }
+
+    if (!opened && mounted) {
+      await Clipboard.setData(ClipboardData(text: msg));
+      _snack('WhatsApp tidak bisa dibuka. Bukti pelunasan disalin.');
+    }
+  }
+
+  Future<void> _deleteTxn(Txn t) async {
+    final ok = await confirmDialog(
+      context,
+      title: 'Hapus catatan?',
+      message: '${t.type == TxnType.utang ? 'Utang' : 'Pembayaran'} '
+          '${rupiah(t.amount)} tanggal ${tglJam(t.date)} akan dihapus.',
+    );
+    if (!ok) return;
+    await AppDb.instance.deleteTxn(t.id!);
+    await _load();
+  }
+
+  Future<void> _tagih() async {
+    final c = _customer!;
+    final balance = computeBalance(_txns);
+    if (balance <= 0) {
+      _snack('Tidak ada utang yang perlu ditagih.');
+      return;
+    }
+
+    final messageSettings = await ShopMessageSettings.load();
+    final cycle = activeDebtCycle(_txns);
+    final msg = buildReminder(
+      name: c.name,
+      balance: balance,
+      due: nextDueDate(cycle),
+      txns: cycle,
+      shopName: messageSettings.shopName,
+      header: messageSettings.header,
+      footer: messageSettings.footer,
+    );
+    bool ok;
+    try {
+      ok = await launchUrl(waUri(c.phone, msg),
+          mode: LaunchMode.externalApplication);
+    } catch (_) {
+      ok = false;
+    }
+    if (!ok && mounted) {
+      await Clipboard.setData(ClipboardData(text: msg));
+      _snack('WhatsApp tidak bisa dibuka. Pesan disalin, tempel manual ya.');
+    }
+  }
+
+  Future<void> _copyRecap() async {
+    final c = _customer!;
+    await Clipboard.setData(ClipboardData(
+      text: buildRecap(
+        name: c.name,
+        balance: computeBalance(_txns),
+        txns: _txns,
+      ),
+    ));
+    if (mounted) _snack('Rekap disalin');
+  }
+
+  Future<void> _edit() async {
+    final updated = await showCustomerForm(context, existing: _customer);
+    if (updated == null) return;
+    await AppDb.instance.updateCustomer(updated);
+    await _load();
+  }
+
+  Future<void> _deleteCustomer() async {
+    final c = _customer!;
+    final ok = await confirmDialog(
+      context,
+      title: 'Hapus pelanggan?',
+      message:
+          '${c.name} beserta semua catatan utangnya akan dihapus permanen.',
+    );
+    if (!ok) return;
+    await AppDb.instance.deleteCustomer(c.id!);
+    if (mounted) Navigator.pop(context);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_loading || _customer == null) {
+      return Scaffold(
+        appBar: AppBar(),
+        body: const Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    final c = _customer!;
+    final summary = CustomerSummary(
+      customer: c,
+      balance: computeBalance(_txns),
+      nextDue: nextDueDate(_txns),
+
+===== UTILS: REKAP DAN FORMAT =====
+1-import 'models.dart';
+2-
+3-const _bulan = [
+4-  'Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun',
+5-  'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des',
+6-];
+7-
+8-/// 15000 -> "Rp 15.000"
+9:String rupiah(int value) {
+10-  final digits = value.abs().toString();
+11-  final buf = StringBuffer();
+12-  for (var i = 0; i < digits.length; i++) {
+13-    if (i > 0 && (digits.length - i) % 3 == 0) buf.write('.');
+14-    buf.write(digits[i]);
+15-  }
+16-  return '${value < 0 ? '-' : ''}Rp $buf';
+17-}
+18-
+19-/// DateTime(2026, 11, 5) -> "5 Nov 2026"
+20:String tglJam(DateTime d) {
+21-  if (d.hour == 0 && d.minute == 0 && d.second == 0 && d.millisecond == 0) {
+22-    return tgl(d);
+23-  }
+24-  String two(int n) => n.toString().padLeft(2, '0');
+25-  return '${two(d.day)}-${two(d.month)}-${d.year} '
+26-      '${two(d.hour)}:${two(d.minute)}:${two(d.second)}';
+27-}
+28-
+29-String tgl(DateTime d) => '${d.day} ${_bulan[d.month - 1]} ${d.year}';
+30-
+31-String statusText(CustomerSummary s, [DateTime? now]) {
+32-  final today = dateOnly(now ?? DateTime.now());
+33-  switch (s.status(now)) {
+34-    case DebtStatus.piutang:
+35-      return 'Piutang pelanggan';
+36-    case DebtStatus.lunas:
+37-      return 'Lunas';
+38-    case DebtStatus.telat:
+39-      final days = today.difference(dateOnly(s.nextDue!)).inDays;
+40-      return 'Telat $days hari';
+41-    case DebtStatus.mendekati:
+42-      final days = dateOnly(s.nextDue!).difference(today).inDays;
+43-      return days == 0 ? 'Jatuh tempo hari ini' : 'Jatuh tempo $days hari lagi';
+44-    case DebtStatus.lancar:
+45-      return s.nextDue == null ? 'Utang berjalan' : 'Tempo ${tgl(s.nextDue!)}';
+46-  }
+47-}
+48-
+49-/// Ubah nomor lokal ke format internasional tanpa plus untuk wa.me.
+50-/// "0812-3456-789" -> "628123456789". Mengembalikan null jika kosong.
+51-String? normalizePhone(String raw) {
+52-  final d = raw.replaceAll(RegExp(r'[^0-9]'), '');
+53-  if (d.isEmpty) return null;
+54-  if (d.startsWith('62')) return d;
+55-  if (d.startsWith('0')) return '62${d.substring(1)}';
+56-  if (d.startsWith('8')) return '62$d';
+57-  return d;
+58-}
+59-
+60-/// Tautan WhatsApp. Tanpa nomor, WhatsApp membiarkan pengguna memilih kontak.
+61-Uri waUri(String phone, String text) {
+62-  final n = normalizePhone(phone);
+63-  final encoded = Uri.encodeComponent(text);
+64-  return Uri.parse('https://wa.me/${n ?? ''}?text=$encoded');
+65-}
+66-
+67-String _line(Txn t) {
+68-  final sign = t.type == TxnType.utang ? '+' : '-';
+69-  final label = t.type == TxnType.utang ? 'utang' : 'bayar';
+70-  final note = t.note.trim().isEmpty ? '' : ' (${t.note.trim()})';
+71-  return '${tglJam(t.date)}: $label $sign${rupiah(t.amount)}$note';
+72-}
+73-
+74-List<Txn> _newestFirst(List<Txn> txns) =>
+75-    [...txns]..sort((a, b) => b.date.compareTo(a.date));
+76-
+77-/// Pesan tagih yang sopan, siap kirim lewat WhatsApp.
+78-String buildReminder({
+79-  required String name,
+80-  required int balance,
+81-  DateTime? due,
+82-  required List<Txn> txns,
+83-  String shopName = '',
+84-  String header = '',
+85-  String footer = '',
+86-}) {
+87-  final b = StringBuffer();
+88-
+89-  if (header.trim().isNotEmpty) {
+90-    b.writeln(header.trim());
+91-    b.writeln('');
+92-  }
+93-  if (shopName.trim().isNotEmpty) {
+94-    b.writeln('*${shopName.trim()}*');
+95-  }
+96-
+97-  b
+98-    ..writeln('Halo $name, mohon maaf mengganggu 🙏')
+99-    ..writeln(
+100-      'Ini pengingat ramah dari warung: sisa utang Anda saat ini '
+101-      '*${rupiah(balance.abs())}*.',
+102-    );
+103-
+104-  if (due != null) b.writeln('Jatuh tempo: ${tgl(due)}.');
+105-
+106-  final recent = _newestFirst(txns);
+107-  if (recent.isNotEmpty) {
+108-    b.writeln('\nRincian siklus tagihan aktif:');
+109-    for (final t in recent) {
+110-      b.writeln('- ${_line(t)}');
+111-    }
+112-  }
+113-
+114-  final closing = footer.trim();
+115-  b.write(
+116-    '\n${closing.isNotEmpty ? closing : 'Kalau sudah ada rezekinya, ditunggu ya. Terima kasih banyak!'}',
+117-  );
+118-  return b.toString();
+119-}
+120-
+121-/// Pesan bukti pelunasan untuk satu siklus utang yang telah ditutup.
+122:String buildSettlementReceipt({
+123-  required String name,
+124-  required List<Txn> txns,
+125-  String shopName = '',
+126-  String header = '',
+127-  String footer = '',
+128-}) {
+129-  final sorted = [...txns]..sort((a, b) {
+130-    final byDate = a.date.compareTo(b.date);
+131-    return byDate != 0 ? byDate : (a.id ?? 0).compareTo(b.id ?? 0);
+132-  });
+133-
+134-  final totalDebt = sorted
+135-      .where((t) => t.type == TxnType.utang)
+136-      .fold<int>(0, (sum, t) => sum + t.amount);
+137-  final totalPaid = sorted
+138-      .where((t) => t.type == TxnType.bayar)
+139-      .fold<int>(0, (sum, t) => sum + t.amount);
+140-
+141-  final b = StringBuffer();
+142-
+143-  if (header.trim().isNotEmpty) {
+144-    b.writeln(header.trim());
+145-    b.writeln('');
+146-  }
+147-  if (shopName.trim().isNotEmpty) {
+148-    b.writeln('*${shopName.trim()}*');
+149-  }
+150-
+151-  b
+152-    ..writeln('BUKTI PELUNASAN')
+153-    ..writeln('Nama: $name')
+154-    ..writeln('Waktu: ${tglJam(DateTime.now())}')
+155-    ..writeln('Status: LUNAS')
+156-    ..writeln('Total utang: *${rupiah(totalDebt)}*')
+157-    ..writeln('Total pembayaran: *${rupiah(totalPaid)}*')
+158-    ..writeln('')
+159-    ..writeln('Rincian transaksi:');
+160-
+161-  for (final t in sorted) {
+162-    b.writeln('- ${_line(t)}');
+163-  }
+164-
+165-  b.writeln('');
+166-  b.write(
+167-    footer.trim().isNotEmpty
+168-        ? footer.trim()
+169-        : 'Terima kasih sudah menyelesaikan pembayaran 🙏',
+170-  );
+171-  return b.toString();
+172-}
+173-
+174-/// Rekap lengkap satu pelanggan sebagai teks.
+175:String buildRecap({
+176-  required String name,
+177-  required int balance,
+178-  required List<Txn> txns,
+179-}) {
+180-  final b = StringBuffer()
+181-    ..writeln('REKAP UTANG: $name')
+182-    ..writeln('Sisa utang: ${rupiah(balance)}')
+183-    ..writeln('Per tanggal: ${tgl(DateTime.now())}')
+184-    ..writeln('');
+185-  final sorted = [...txns]..sort((a, b) => a.date.compareTo(b.date));
+186-  for (final t in sorted) {
+187-    b.writeln(_line(t));
+188-  }
+189-  return b.toString().trimRight();
+190-}
+
+===== PENGATURAN IDENTITAS WARUNG =====
+import 'package:shared_preferences/shared_preferences.dart';
+
+class ShopMessageSettings {
+  const ShopMessageSettings({
+    this.shopName = '',
+    this.header = '',
+    this.footer = '',
+  });
+
+  final String shopName;
+  final String header;
+  final String footer;
+
+  static const _nameKey = 'shop_message_name';
+  static const _headerKey = 'shop_message_header';
+  static const _footerKey = 'shop_message_footer';
+
+  static Future<ShopMessageSettings> load() async {
+    final prefs = SharedPreferencesAsync();
+    return ShopMessageSettings(
+      shopName: await prefs.getString(_nameKey) ?? '',
+      header: await prefs.getString(_headerKey) ?? '',
+      footer: await prefs.getString(_footerKey) ?? '',
+    );
+  }
+
+  Future<void> save() async {
+    final prefs = SharedPreferencesAsync();
+    await prefs.setString(_nameKey, shopName.trim());
+    await prefs.setString(_headerKey, header.trim());
+    await prefs.setString(_footerKey, footer.trim());
+  }
+}
+
+===== KONFIGURASI ANDROID =====
+find: ‘android’: No such file or directory
