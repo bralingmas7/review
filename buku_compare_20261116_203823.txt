@@ -1,0 +1,146 @@
+==========================================
+ PEMBANDING TERMUX vs GITHUB
+==========================================
+Tanggal : Mon Nov 16 20:38:23 WIB 2026
+Repo    : /data/data/com.termux/files/home/buku
+Remote  : origin
+Branch  : main
+
+===== REMOTE URL =====
+origin	https://github.com/bralingmas7/buku.git (fetch)
+origin	https://github.com/bralingmas7/buku.git (push)
+
+===== FETCH GITHUB =====
+Fetch berhasil.
+
+===== VERSI GITHUB =====
+Commit : 401319e335c8307325b056b37779c36aa0a547b8
+Tanggal: 2026-11-16 19:44:59 +0700
+Pesan  : Tambah indikator status backup di halaman utama
+
+===== VERSI TERMUX =====
+Commit : 401319e335c8307325b056b37779c36aa0a547b8
+Tanggal: 2026-11-16 19:44:59 +0700
+Pesan  : Tambah indikator status backup di halaman utama
+
+===== POSISI COMMIT =====
+Commit GitHub yang belum ada di HEAD lokal : 0
+Commit lokal yang belum ada di GitHub      : 0
+
+
+===== PERUBAHAN FILE LOKAL =====
+ M .github/workflows/build-apk.yml
+ M lib/main.dart
+ M lib/screens/home_screen.dart
+ M lib/screens/settings_screen.dart
+ M lib/services/backup_status.dart
+ M lib/widgets/backup_indicator.dart
+ M pubspec.yaml
+?? add_backup_indicator.sh
+?? backup_before_revert_lightweight_20261115_133121/
+?? backup_cloud_reconnect_20261115_133235/
+?? backup_diagnostik_google_20261115_111942/
+?? backup_fix_google_import_20261115_104148/
+?? backup_google_login_20261114_185251/
+?? backup_google_restore_20261115_132224/
+?? backup_google_session_20261115_102650/
+?? backup_google_session_fix_20261115_123805/
+?? backup_google_session_fix_20261115_124655/
+?? backup_listener_google_20261115_125040/
+?? backup_sebelum_cloud_ui_20261114_225058/
+?? backup_sebelum_cloud_ui_20261114_225846/
+?? backup_sebelum_fix_sqlite_20261114_231957/
+?? backup_sebelum_google_20261114_184301/
+?? backup_sebelum_integrasi_drive_20261114_221515/
+?? backup_sebelum_pin_ffi_20261114_230953/
+?? backup_sebelum_pin_shared_preferences_20261115_124930/
+?? backup_sebelum_settings_20261114_164203/
+?? backup_sebelum_test_restore_20261114_230544/
+?? backup_sebelum_update_siklus/
+?? backup_status_google_20261114_192221/
+?? fix_diag.sh
+?? fix_google_session.sh
+?? fix_ux.sh
+?? lib/screens/lock_screen.dart
+?? lib/screens/pin_screen.dart
+?? lib/services/app_lock_service.dart
+?? lib/widgets/app_lock_gate.dart
+?? lib/widgets/app_lock_settings_card.dart
+?? lib/widgets/pin_pad.dart
+?? patch_google_session.py
+?? patchv3.py
+?? tambah_fitur.sh
+
+===== FILE BERBEDA DARI GITHUB =====
+M	.github/workflows/build-apk.yml
+M	lib/main.dart
+M	lib/screens/home_screen.dart
+M	lib/screens/settings_screen.dart
+M	lib/services/backup_status.dart
+M	lib/widgets/backup_indicator.dart
+M	pubspec.yaml
+
+===== RINGKASAN PERUBAHAN TRACKED =====
+ .github/workflows/build-apk.yml   |  45 +++++++++++++++++
+ lib/main.dart                     |   3 ++
+ lib/screens/home_screen.dart      |  63 +++++++++++++++++++++--
+ lib/screens/settings_screen.dart  |   5 ++
+ lib/services/backup_status.dart   |  60 ++++++++++++++--------
+ lib/widgets/backup_indicator.dart | 104 +++++++++++++++++++++++++-------------
+ pubspec.yaml                      |   1 +
+ 7 files changed, 223 insertions(+), 58 deletions(-)
+
+===== PERUBAHAN STAGED =====
+
+===== FILE UNTRACKED =====
+add_backup_indicator.sh
+backup_before_revert_lightweight_20261115_133121/google_drive_service.dart
+backup_cloud_reconnect_20261115_133235/settings_screen.dart
+backup_diagnostik_google_20261115_111942/google_drive_service.dart
+backup_diagnostik_google_20261115_111942/settings_screen.dart
+backup_fix_google_import_20261115_104148/settings_screen.dart
+backup_google_login_20261114_185251/settings_screen.dart
+backup_google_restore_20261115_132224/google_drive_service.dart
+backup_google_session_20261115_102650/google_drive_service.dart
+backup_google_session_20261115_102650/settings_screen.dart
+backup_google_session_fix_20261115_123805/pubspec.yaml
+backup_google_session_fix_20261115_124655/lib/screens/settings_screen.dart
+backup_google_session_fix_20261115_124655/lib/services/google_drive_service.dart
+backup_google_session_fix_20261115_124655/pubspec.yaml
+backup_listener_google_20261115_125040/settings_screen.dart
+backup_sebelum_cloud_ui_20261114_225058/settings_screen.dart
+backup_sebelum_cloud_ui_20261114_225846/settings_screen.dart
+backup_sebelum_fix_sqlite_20261114_231957/pubspec.yaml
+backup_sebelum_google_20261114_184301/pubspec.yaml
+backup_sebelum_integrasi_drive_20261114_221515/lib/services/google_drive_service.dart
+backup_sebelum_pin_ffi_20261114_230953/pubspec.yaml
+backup_sebelum_pin_shared_preferences_20261115_124930/pubspec.yaml
+backup_sebelum_settings_20261114_164203/db.dart
+backup_sebelum_settings_20261114_164203/home_screen.dart
+backup_sebelum_settings_20261114_164203/pubspec.yaml
+backup_sebelum_test_restore_20261114_230544/db.dart
+backup_sebelum_test_restore_20261114_230544/models.dart
+backup_sebelum_update_siklus/20261114_160730/lib/models.dart
+backup_sebelum_update_siklus/20261114_160730/lib/screens/customer_screen.dart
+backup_sebelum_update_siklus/20261114_160730/lib/utils.dart
+backup_sebelum_update_siklus/penyempurnaan_20261114_161231/customer_screen.dart
+backup_sebelum_update_siklus/penyempurnaan_20261114_161231/utils.dart
+backup_status_google_20261114_192221/google_drive_service.dart
+backup_status_google_20261114_192221/settings_screen.dart
+fix_diag.sh
+fix_google_session.sh
+fix_ux.sh
+lib/screens/lock_screen.dart
+lib/screens/pin_screen.dart
+lib/services/app_lock_service.dart
+lib/widgets/app_lock_gate.dart
+lib/widgets/app_lock_settings_card.dart
+lib/widgets/pin_pad.dart
+patch_google_session.py
+patchv3.py
+tambah_fitur.sh
+
+===== KESIMPULAN OTOMATIS =====
+Commit sama, tetapi masih ada perubahan lokal yang belum di-commit.
+
+===== SELESAI =====
