@@ -1,6 +1,4 @@
-+ echo '===== AUDIT BUILDER PESAN ====='
 ===== AUDIT BUILDER PESAN =====
-+ grep -n -A90 -E 'String buildReminder|String buildSettlementReceipt' lib/utils.dart
 78:String buildReminder({
 79-  required String name,
 80-  required int balance,
@@ -114,9 +112,6 @@
 188-  }
 189-  return b.toString().trimRight();
 190-}
-+ echo
 
-+ echo '===== AUDIT PENGIRIMAN DETAIL ====='
 ===== AUDIT PENGIRIMAN DETAIL =====
-+ grep -n -A55 -E 'Future<void> _tagih\\(|Future<void> _sendSettlementReceipt|Future<void> _addTxn' lib/screens/customer_screen.dart
 grep: Unmatched ( or \(
