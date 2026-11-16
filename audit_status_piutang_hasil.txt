@@ -1,0 +1,113 @@
+===== AUDIT STATUS PIUTANG =====
+Tue Nov 17 06:58:36 WIB 2026
+
+===== SEMUA REFERENSI DEBT STATUS =====
+lib/utils.dart:33:  switch (s.status(now)) {
+lib/utils.dart:34:    case DebtStatus.piutang:
+lib/utils.dart:36:    case DebtStatus.lunas:
+lib/utils.dart:38:    case DebtStatus.telat:
+lib/utils.dart:41:    case DebtStatus.mendekati:
+lib/utils.dart:44:    case DebtStatus.lancar:
+lib/status_style.dart:11:Color statusColor(DebtStatus s) {
+lib/status_style.dart:12:  switch (s) {
+lib/status_style.dart:13:    case DebtStatus.piutang:
+lib/status_style.dart:15:    case DebtStatus.lunas:
+lib/status_style.dart:17:    case DebtStatus.lancar:
+lib/status_style.dart:19:    case DebtStatus.mendekati:
+lib/status_style.dart:21:    case DebtStatus.telat:
+lib/dialogs.dart:214:      switch (choice) {
+lib/models.dart:3:enum DebtStatus { piutang, lunas, lancar, mendekati, telat }
+lib/models.dart:169:  DebtStatus status([DateTime? now]) {
+lib/models.dart:170:    if (balance < 0) return DebtStatus.piutang;
+lib/models.dart:171:    if (balance == 0) return DebtStatus.lunas;
+lib/models.dart:173:    if (due == null) return DebtStatus.lancar;
+lib/models.dart:176:    if (dueDay.isBefore(today)) return DebtStatus.telat;
+lib/models.dart:177:    if (dueDay.difference(today).inDays <= 3) return DebtStatus.mendekati;
+lib/models.dart:178:    return DebtStatus.lancar;
+lib/screens/customer_screen.dart:261:              switch (v) {
+lib/screens/customer_screen.dart:338:                    status == DebtStatus.piutang
+lib/screens/customer_screen.dart:348:                      color: status == DebtStatus.lunas ? null : color,
+lib/screens/home_screen.dart:173:        _items.where((s) => s.status() == DebtStatus.telat).length;
+lib/screens/home_screen.dart:175:        _items.where((s) => s.status() == DebtStatus.mendekati).length;
+lib/screens/home_screen.dart:372:            color: status == DebtStatus.lunas ? null : color,
+lib/screens/home_screen.dart:378:          if (status == DebtStatus.mendekati ||
+test/utils_test.dart:75:    expect(s(0, null).status(now), DebtStatus.lunas);
+test/utils_test.dart:76:    expect(s(5000, null).status(now), DebtStatus.lancar);
+test/utils_test.dart:77:    expect(s(5000, DateTime(2026, 11, 12)).status(now), DebtStatus.telat);
+test/utils_test.dart:78:    expect(s(5000, DateTime(2026, 11, 13)).status(now), DebtStatus.mendekati);
+test/utils_test.dart:79:    expect(s(5000, DateTime(2026, 11, 16)).status(now), DebtStatus.mendekati);
+test/utils_test.dart:80:    expect(s(5000, DateTime(2026, 11, 20)).status(now), DebtStatus.lancar);
+
+===== STATUS STYLE =====
+     1	import 'package:flutter/material.dart';
+     2	
+     3	import 'models.dart';
+     4	
+     5	const kHijau = Color(0xFF2E7D32);
+     6	const kKuning = Color(0xFFF9A825);
+     7	const kMerah = Color(0xFFC62828);
+     8	const kAbu = Color(0xFF757575);
+     9	const kBiru = Color(0xFF1565C0);
+    10	
+    11	Color statusColor(DebtStatus s) {
+    12	  switch (s) {
+    13	    case DebtStatus.piutang:
+    14	      return kBiru;
+    15	    case DebtStatus.lunas:
+    16	      return kAbu;
+    17	    case DebtStatus.lancar:
+    18	      return kHijau;
+    19	    case DebtStatus.mendekati:
+    20	      return kKuning;
+    21	    case DebtStatus.telat:
+    22	      return kMerah;
+    23	  }
+    24	}
+
+===== TEST MODELS =====
+test/utils_test.dart-49-      utang(10000, DateTime(2026, 1, 1), due: DateTime(2026, 1, 10)),
+test/utils_test.dart-50-      utang(20000, DateTime(2026, 1, 5), due: DateTime(2026, 1, 20)),
+test/utils_test.dart-51-      bayar(10000, DateTime(2026, 1, 6)),
+test/utils_test.dart-52-    ];
+test/utils_test.dart-53-    // Utang pertama sudah lunas, tinggal yang tempo 20 Jan.
+test/utils_test.dart:54:    expect(nextDueDate(txns), DateTime(2026, 1, 20));
+test/utils_test.dart-55-  });
+test/utils_test.dart-56-
+test/utils_test.dart-57-  test('tanpa tempo atau sudah lunas -> tidak ada jatuh tempo', () {
+test/utils_test.dart:58:    expect(nextDueDate([utang(1000, DateTime(2026, 1, 1))]), isNull);
+test/utils_test.dart-59-    expect(
+test/utils_test.dart:60:      nextDueDate([
+test/utils_test.dart-61-        utang(1000, DateTime(2026, 1, 1), due: DateTime(2026, 1, 10)),
+test/utils_test.dart-62-        bayar(1000, DateTime(2026, 1, 2)),
+test/utils_test.dart-63-      ]),
+test/utils_test.dart-64-      isNull,
+test/utils_test.dart-65-    );
+test/utils_test.dart-66-  });
+test/utils_test.dart-67-
+test/utils_test.dart-68-  test('status pelanggan', () {
+test/utils_test.dart-69-    final c = Customer(id: 1, name: 'Bu Ani', createdAt: DateTime(2026, 1, 1));
+test/utils_test.dart-70-    final now = DateTime(2026, 11, 13, 9);
+test/utils_test.dart-71-
+test/utils_test.dart-72-    CustomerSummary s(int balance, DateTime? due) =>
+test/utils_test.dart-73-        CustomerSummary(customer: c, balance: balance, nextDue: due);
+test/utils_test.dart-74-
+test/utils_test.dart:75:    expect(s(0, null).status(now), DebtStatus.lunas);
+test/utils_test.dart:76:    expect(s(5000, null).status(now), DebtStatus.lancar);
+test/utils_test.dart:77:    expect(s(5000, DateTime(2026, 11, 12)).status(now), DebtStatus.telat);
+test/utils_test.dart:78:    expect(s(5000, DateTime(2026, 11, 13)).status(now), DebtStatus.mendekati);
+test/utils_test.dart:79:    expect(s(5000, DateTime(2026, 11, 16)).status(now), DebtStatus.mendekati);
+test/utils_test.dart:80:    expect(s(5000, DateTime(2026, 11, 20)).status(now), DebtStatus.lancar);
+test/utils_test.dart-81-    expect(statusText(s(5000, DateTime(2026, 11, 10)), now), 'Telat 3 hari');
+test/utils_test.dart-82-  });
+test/utils_test.dart-83-
+test/utils_test.dart-84-  test('pesan tagih memuat nama dan nominal', () {
+test/utils_test.dart-85-    final msg = buildReminder(
+test/utils_test.dart-86-      name: 'Pak Budi',
+test/utils_test.dart-87-      balance: 45000,
+test/utils_test.dart-88-      due: DateTime(2026, 11, 20),
+test/utils_test.dart-89-      txns: [utang(45000, DateTime(2026, 11, 1))],
+test/utils_test.dart-90-    );
+test/utils_test.dart-91-    expect(msg, contains('Pak Budi'));
+test/utils_test.dart-92-    expect(msg, contains('Rp 45.000'));
+
+===== PATCH CHECK =====
