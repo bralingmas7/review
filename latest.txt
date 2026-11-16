@@ -1,34 +1,17 @@
-==========================================
- PEMBANDING TERMUX vs GITHUB
-==========================================
-Tanggal : Mon Nov 16 20:38:23 WIB 2026
-Repo    : /data/data/com.termux/files/home/buku
-Remote  : origin
-Branch  : main
+===== AUDIT FITUR BUKU UTANG WARUNG =====
+Mon Nov 16 20:47:11 WIB 2026
 
-===== REMOTE URL =====
-origin	https://github.com/bralingmas7/buku.git (fetch)
-origin	https://github.com/bralingmas7/buku.git (push)
+===== 1. FETCH GITHUB =====
+From https://github.com/bralingmas7/buku
+ * branch            main       -> FETCH_HEAD
 
-===== FETCH GITHUB =====
-Fetch berhasil.
+===== 2. POSISI COMMIT =====
+401319e Tambah indikator status backup di halaman utama
+401319e Tambah indikator status backup di halaman utama
+0	0
+Format angka: GitHub lebih dahulu, lokal sesudahnya.
 
-===== VERSI GITHUB =====
-Commit : 401319e335c8307325b056b37779c36aa0a547b8
-Tanggal: 2026-11-16 19:44:59 +0700
-Pesan  : Tambah indikator status backup di halaman utama
-
-===== VERSI TERMUX =====
-Commit : 401319e335c8307325b056b37779c36aa0a547b8
-Tanggal: 2026-11-16 19:44:59 +0700
-Pesan  : Tambah indikator status backup di halaman utama
-
-===== POSISI COMMIT =====
-Commit GitHub yang belum ada di HEAD lokal : 0
-Commit lokal yang belum ada di GitHub      : 0
-
-
-===== PERUBAHAN FILE LOKAL =====
+===== 3. STATUS LOKAL =====
  M .github/workflows/build-apk.yml
  M lib/main.dart
  M lib/screens/home_screen.dart
@@ -71,16 +54,343 @@ Commit lokal yang belum ada di GitHub      : 0
 ?? patchv3.py
 ?? tambah_fitur.sh
 
-===== FILE BERBEDA DARI GITHUB =====
-M	.github/workflows/build-apk.yml
-M	lib/main.dart
-M	lib/screens/home_screen.dart
-M	lib/screens/settings_screen.dart
-M	lib/services/backup_status.dart
-M	lib/widgets/backup_indicator.dart
-M	pubspec.yaml
+===== 4. PEMERIKSAAN DUA INDIKATOR =====
 
-===== RINGKASAN PERUBAHAN TRACKED =====
+--- lib/services/backup_status.dart ---
+11:class BackupStatus {
+12:  BackupStatus._();
+14:  static final BackupStatus instance = BackupStatus._();
+20:  final ValueNotifier<bool?> driveDirty = ValueNotifier<bool?>(null);
+21:  final ValueNotifier<bool?> localDirty = ValueNotifier<bool?>(null);
+42:      driveDirty.value ??= drive ?? hasData;
+43:      localDirty.value ??= local ?? hasData;
+45:      if (drive == null) await _persist(_driveKey, driveDirty.value ?? hasData);
+46:      if (local == null) await _persist(_localKey, localDirty.value ?? hasData);
+49:      driveDirty.value ??= hasData;
+50:      localDirty.value ??= hasData;
+54:  void markDirty() {
+56:    driveDirty.value = true;
+57:    localDirty.value = true;
+64:  Future<void> markDriveBackedUp(int revision) async {
+66:    driveDirty.value = false;
+70:  /// Sama seperti [markDriveBackedUp], untuk backup file lokal.
+71:  Future<void> markLocalBackedUp(int revision) async {
+73:    localDirty.value = false;
+78:  Future<void> markBackedUp(int revision) => markDriveBackedUp(revision);
+
+--- lib/widgets/backup_indicator.dart ---
+9:class BackupIndicator extends StatefulWidget {
+10:  const BackupIndicator({super.key, this.onTap});
+15:  State<BackupIndicator> createState() => _BackupIndicatorState();
+18:class _BackupIndicatorState extends State<BackupIndicator> {
+25:    BackupStatus.instance.localDirty.addListener(_onChanged);
+26:    BackupStatus.instance.driveDirty.addListener(_onChanged);
+32:    BackupStatus.instance.localDirty.removeListener(_onChanged);
+33:    BackupStatus.instance.driveDirty.removeListener(_onChanged);
+39:      BackupStatus.instance.localDirty.value == true ||
+40:      BackupStatus.instance.driveDirty.value == true;
+99:    final local = BackupStatus.instance.localDirty.value;
+100:    final drive = BackupStatus.instance.driveDirty.value;
+116:              _item(Icons.smartphone, local),
+118:              _item(Icons.cloud_outlined, drive),
+
+--- lib/screens/home_screen.dart ---
+77:    await BackupStatus.instance.load(hasData: customers.isNotEmpty);
+162:          BackupIndicator(onTap: _openSettings),
+
+--- lib/main.dart ---
+Tidak ditemukan pola indikator.
+
+--- lib/screens/settings_screen.dart ---
+153:      final revision = BackupStatus.instance.revision;
+171:        await BackupStatus.instance.markLocalBackedUp(revision);
+243:  Future<String?> _askCloudPassword({required bool confirm}) async {
+343:  Future<void> _cloudBackup() async {
+355:      final password = await _askCloudPassword(confirm: true);
+358:      final revision = BackupStatus.instance.revision;
+366:      await BackupStatus.instance.markBackedUp(revision);
+375:  Future<void> _cloudRestore() async {
+400:          title: const Text('Pilih backup cloud'),
+408:                    leading: const Icon(Icons.cloud_download_outlined),
+436:      final password = await _askCloudPassword(confirm: false);
+458:          title: const Text('Pulihkan backup cloud?'),
+460:            'Data lokal saat ini akan DIGANTI dengan isi backup cloud.\n\n'
+556:                    leading: Icon(Icons.cloud_outlined),
+559:                      'Hubungkan akun Google untuk menyiapkan backup cloud.',
+636:                        onPressed: _busy ? null : _cloudBackup,
+637:                        icon: const Icon(Icons.cloud_upload_outlined),
+645:                        onPressed: _busy ? null : _cloudRestore,
+646:                        icon: const Icon(Icons.cloud_download_outlined),
+653:                    'Backup cloud dienkripsi sebelum dikirim. '
+
+===== 5. ISI FILE INDIKATOR LOKAL =====
+
+----- lib/services/backup_status.dart -----
+import 'dart:async';
+
+import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+/// Melacak apakah ada perubahan data yang belum di-backup, terpisah untuk
+/// backup lokal (file di HP) dan Google Drive.
+///
+/// Nilai notifier: null = belum diketahui, true = ada perubahan belum
+/// di-backup, false = sudah di-backup.
+class BackupStatus {
+  BackupStatus._();
+
+  static final BackupStatus instance = BackupStatus._();
+
+  // Kunci lama dipertahankan untuk Google Drive agar status lama tidak hilang.
+  static const String _driveKey = 'backup_dirty';
+  static const String _localKey = 'backup_local_dirty';
+
+  final ValueNotifier<bool?> driveDirty = ValueNotifier<bool?>(null);
+  final ValueNotifier<bool?> localDirty = ValueNotifier<bool?>(null);
+
+  bool _loaded = false;
+  int _revision = 0;
+
+  /// Naik setiap data berubah. Dipakai agar perubahan yang terjadi saat
+  /// backup berlangsung tidak ikut dianggap sudah ter-backup.
+  int get revision => _revision;
+
+  /// Dipanggil sekali saat app dibuka. Panggilan berikutnya diabaikan.
+  Future<void> load({required bool hasData}) async {
+    if (_loaded) return;
+    _loaded = true;
+
+    try {
+      final prefs = SharedPreferencesAsync();
+      final drive = await prefs.getBool(_driveKey);
+      final local = await prefs.getBool(_localKey);
+
+      // Pertama kali: kalau sudah ada data tapi belum pernah di-backup,
+      // anggap belum ter-backup. Kalau masih kosong, anggap aman.
+      driveDirty.value ??= drive ?? hasData;
+      localDirty.value ??= local ?? hasData;
+
+      if (drive == null) await _persist(_driveKey, driveDirty.value ?? hasData);
+      if (local == null) await _persist(_localKey, localDirty.value ?? hasData);
+    } catch (e) {
+      debugPrint('Gagal memuat status backup: $e');
+      driveDirty.value ??= hasData;
+      localDirty.value ??= hasData;
+    }
+  }
+
+  void markDirty() {
+    _revision++;
+    driveDirty.value = true;
+    localDirty.value = true;
+    unawaited(_persist(_driveKey, true));
+    unawaited(_persist(_localKey, true));
+  }
+
+  /// Tandai Google Drive sudah ter-backup, hanya jika data tidak berubah
+  /// sejak [revision] dicatat (sebelum backup dibuat).
+  Future<void> markDriveBackedUp(int revision) async {
+    if (revision != _revision) return;
+    driveDirty.value = false;
+    await _persist(_driveKey, false);
+  }
+
+  /// Sama seperti [markDriveBackedUp], untuk backup file lokal.
+  Future<void> markLocalBackedUp(int revision) async {
+    if (revision != _revision) return;
+    localDirty.value = false;
+    await _persist(_localKey, false);
+  }
+
+  /// Nama lama, tetap dipakai oleh alur backup Google Drive.
+  Future<void> markBackedUp(int revision) => markDriveBackedUp(revision);
+
+  Future<void> _persist(String key, bool value) async {
+    try {
+      await SharedPreferencesAsync().setBool(key, value);
+    } catch (e) {
+      debugPrint('Gagal menyimpan status backup: $e');
+    }
+  }
+}
+
+----- lib/widgets/backup_indicator.dart -----
+import 'dart:async';
+
+import 'package:flutter/material.dart';
+
+import '../services/backup_status.dart';
+
+/// Dua bulatan status di AppBar: ikon HP = backup lokal, ikon awan = Google
+/// Drive. Merah/biru bergantian = belum di-backup. Hijau = sudah di-backup.
+class BackupIndicator extends StatefulWidget {
+  const BackupIndicator({super.key, this.onTap});
+
+  final VoidCallback? onTap;
+
+  @override
+  State<BackupIndicator> createState() => _BackupIndicatorState();
+}
+
+class _BackupIndicatorState extends State<BackupIndicator> {
+  Timer? _timer;
+  bool _alt = false;
+
+  @override
+  void initState() {
+    super.initState();
+    BackupStatus.instance.localDirty.addListener(_onChanged);
+    BackupStatus.instance.driveDirty.addListener(_onChanged);
+    _syncTimer();
+  }
+
+  @override
+  void dispose() {
+    BackupStatus.instance.localDirty.removeListener(_onChanged);
+    BackupStatus.instance.driveDirty.removeListener(_onChanged);
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  bool get _anyDirty =>
+      BackupStatus.instance.localDirty.value == true ||
+      BackupStatus.instance.driveDirty.value == true;
+
+  void _onChanged() {
+    _syncTimer();
+    if (mounted) setState(() {});
+  }
+
+  void _syncTimer() {
+    if (_anyDirty && _timer == null) {
+      _timer = Timer.periodic(const Duration(milliseconds: 600), (_) {
+        if (mounted) setState(() => _alt = !_alt);
+      });
+    } else if (!_anyDirty && _timer != null) {
+      _timer!.cancel();
+      _timer = null;
+      _alt = false;
+    }
+  }
+
+  String _describe(bool? state) {
+    if (state == null) return 'belum diketahui';
+    return state ? 'ada perubahan belum di-backup' : 'sudah di-backup';
+  }
+
+  Color _colorFor(bool? state) {
+    if (state == null) return Colors.grey;
+    if (state) return _alt ? Colors.blue : Colors.red;
+    return Colors.green;
+  }
+
+  Widget _item(IconData icon, bool? state) {
+    final color = _colorFor(state);
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 18),
+        const SizedBox(width: 4),
+        AnimatedContainer(
+          duration: const Duration(milliseconds: 250),
+          width: 12,
+          height: 12,
+          decoration: BoxDecoration(
+            color: color,
+            shape: BoxShape.circle,
+            boxShadow: [
+              BoxShadow(
+                color: color.withOpacity(0.5),
+                blurRadius: 5,
+                spreadRadius: 1,
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final local = BackupStatus.instance.localDirty.value;
+    final drive = BackupStatus.instance.driveDirty.value;
+
+    // Status belum diketahui: jangan tampilkan apa pun supaya tidak salah.
+    if (local == null && drive == null) return const SizedBox.shrink();
+
+    return Tooltip(
+      message: 'Backup lokal: ${_describe(local)}\n'
+          'Backup Google Drive: ${_describe(drive)}',
+      child: InkWell(
+        onTap: widget.onTap,
+        borderRadius: BorderRadius.circular(20),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _item(Icons.smartphone, local),
+              const SizedBox(width: 10),
+              _item(Icons.cloud_outlined, drive),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+===== 6. PEMANGGILAN INDIKATOR DI HOME =====
+157-
+158-    return Scaffold(
+159-      appBar: AppBar(
+160-        title: const Text('Buku Utang Warung'),
+161-        actions: [
+162:          BackupIndicator(onTap: _openSettings),
+163-          IconButton(
+164-            tooltip: 'Pengaturan',
+165-            icon: const Icon(Icons.settings_outlined),
+166-            onPressed: () async {
+167-              await Navigator.push(
+
+===== 7. PEMANGGILAN STATUS SAAT DATA BERUBAH =====
+lib/db.dart:76:    BackupStatus.instance.markDirty();
+lib/db.dart:83:    BackupStatus.instance.markDirty();
+lib/db.dart:90:    BackupStatus.instance.markDirty();
+lib/db.dart:113:    BackupStatus.instance.markDirty();
+lib/db.dart:120:    BackupStatus.instance.markDirty();
+lib/db.dart:231:    BackupStatus.instance.markDirty();
+lib/screens/settings_screen.dart:171:        await BackupStatus.instance.markLocalBackedUp(revision);
+lib/screens/settings_screen.dart:366:      await BackupStatus.instance.markBackedUp(revision);
+lib/services/backup_status.dart:54:  void markDirty() {
+lib/services/backup_status.dart:64:  Future<void> markDriveBackedUp(int revision) async {
+lib/services/backup_status.dart:71:  Future<void> markLocalBackedUp(int revision) async {
+lib/services/backup_status.dart:78:  Future<void> markBackedUp(int revision) => markDriveBackedUp(revision);
+
+===== 8. FITUR WHATSAPP DAN KUNCI =====
+41:  Future<void> _tagihCepat(CustomerSummary s) async {
+44:    final cycle = activeDebtCycle(txns);
+45:    final msg = buildReminder(
+55:        waUri(c.phone, msg),
+228:                            onTagih: () => _tagihCepat(visible[i]),
+317:  final VoidCallback onTagih;
+321:    required this.onTagih,
+352:              onPressed: onTagih,
+ADA: lib/services/app_lock_service.dart
+ADA: lib/widgets/app_lock_gate.dart
+ADA: lib/widgets/app_lock_settings_card.dart
+ADA: lib/widgets/pin_pad.dart
+ADA: lib/screens/lock_screen.dart
+ADA: lib/screens/pin_screen.dart
+
+===== 9. DEPENDENSI =====
+14:  url_launcher: ^6.3.0
+16:  local_auth: ^3.0.0
+21:  cryptography: ^2.7.0
+22:  shared_preferences: 2.3.1
+
+===== 10. DIFF FILE TERKAIT DARI GITHUB =====
  .github/workflows/build-apk.yml   |  45 +++++++++++++++++
  lib/main.dart                     |   3 ++
  lib/screens/home_screen.dart      |  63 +++++++++++++++++++++--
@@ -90,9 +400,491 @@ M	pubspec.yaml
  pubspec.yaml                      |   1 +
  7 files changed, 223 insertions(+), 58 deletions(-)
 
-===== PERUBAHAN STAGED =====
+diff --git a/.github/workflows/build-apk.yml b/.github/workflows/build-apk.yml
+index 36d0902..1ff3d8b 100644
+--- a/.github/workflows/build-apk.yml
++++ b/.github/workflows/build-apk.yml
+@@ -48,6 +48,51 @@ jobs:
+           sed -i 's/android:label="[^"]*"/android:label="Buku Utang Warung"/' \
+             android/app/src/main/AndroidManifest.xml
+ 
++      # Siapkan Android untuk sidik jari (local_auth)
++      - name: Konfigurasi Android untuk kunci aplikasi
++        run: |
++          set -euo pipefail
++
++          python3 - <<'PY'
++          from pathlib import Path
++          import re
++
++          kt_files = list(Path("android/app/src/main").rglob("MainActivity.kt"))
++          if len(kt_files) != 1:
++              raise SystemExit("MainActivity.kt tidak ditemukan atau ambigu")
++
++          kt = kt_files[0]
++          kt_text = kt.read_text()
++          if "FlutterFragmentActivity" not in kt_text:
++              if "FlutterActivity" not in kt_text:
++                  raise SystemExit("MainActivity.kt tidak memakai FlutterActivity")
++              kt.write_text(kt_text.replace("FlutterActivity", "FlutterFragmentActivity"))
++
++          manifest = Path("android/app/src/main/AndroidManifest.xml")
++          m = manifest.read_text()
++          perm = '<uses-permission android:name="android.permission.USE_BIOMETRIC"/>'
++          if perm not in m:
++              if m.count("<application") != 1:
++                  raise SystemExit("Tag application tidak ditemukan atau ambigu")
++              m = m.replace("<application", perm + "\n    <application", 1)
++              manifest.write_text(m)
++
++          for rel in ("values/styles.xml", "values-night/styles.xml"):
++              p = Path("android/app/src/main/res") / rel
++              if not p.is_file():
++                  continue
++              s = p.read_text()
++              s2 = re.sub(
++                  r'(<style name="LaunchTheme" parent=")[^"]*(")',
++                  r'\1Theme.AppCompat.DayNight.NoActionBar\2',
++                  s,
++              )
++              if s2 != s:
++                  p.write_text(s2)
++
++          print("Android siap untuk kunci aplikasi")
++          PY
++
+       # Siapkan keystore dari GitHub Secrets
+       - name: Siapkan keystore
+         env:
+diff --git a/lib/main.dart b/lib/main.dart
+index ee1622d..0c36bd1 100644
+--- a/lib/main.dart
++++ b/lib/main.dart
+@@ -1,6 +1,7 @@
+ import 'package:flutter/material.dart';
+ 
+ import 'screens/home_screen.dart';
++import 'widgets/app_lock_gate.dart';
+ 
+ void main() {
+   WidgetsFlutterBinding.ensureInitialized();
+@@ -20,6 +21,8 @@ class BukuUtangApp extends StatelessWidget {
+         colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF2E7D32)),
+         visualDensity: VisualDensity.standard,
+       ),
++      builder: (context, child) =>
++          AppLockGate(child: child ?? const SizedBox.shrink()),
+       home: const HomeScreen(),
+     );
+   }
+diff --git a/lib/screens/home_screen.dart b/lib/screens/home_screen.dart
+index 336b168..09f88a9 100644
+--- a/lib/screens/home_screen.dart
++++ b/lib/screens/home_screen.dart
+@@ -1,4 +1,6 @@
+ import 'package:flutter/material.dart';
++import 'package:flutter/services.dart';
++import 'package:url_launcher/url_launcher.dart';
+ 
+ import '../db.dart';
+ import '../dialogs.dart';
+@@ -36,6 +38,39 @@ class _HomeScreenState extends State<HomeScreen> {
+     await _load();
+   }
+ 
++  Future<void> _tagihCepat(CustomerSummary s) async {
++    final c = s.customer;
++    final txns = await AppDb.instance.txnsFor(c.id!);
++    final cycle = activeDebtCycle(txns);
++    final msg = buildReminder(
++      name: c.name,
++      balance: computeBalance(txns),
++      due: nextDueDate(cycle),
++      txns: cycle,
++    );
++
++    bool ok;
++    try {
++      ok = await launchUrl(
++        waUri(c.phone, msg),
++        mode: LaunchMode.externalApplication,
++      );
++    } catch (_) {
++      ok = false;
++    }
++
++    if (!ok && mounted) {
++      await Clipboard.setData(ClipboardData(text: msg));
++      ScaffoldMessenger.of(context).showSnackBar(
++        const SnackBar(
++          content: Text(
++            'WhatsApp tidak bisa dibuka. Pesan disalin, tempel manual ya.',
++          ),
++        ),
++      );
++    }
++  }
++
+   Future<void> _load() async {
+     final db = AppDb.instance;
+     final customers = await db.customers();
+@@ -190,6 +225,7 @@ class _HomeScreenState extends State<HomeScreen> {
+                           itemBuilder: (_, i) => _CustomerTile(
+                             summary: visible[i],
+                             onTap: () => _openCustomer(visible[i].customer),
++                            onTagih: () => _tagihCepat(visible[i]),
+                           ),
+                         ),
+                 ),
+@@ -278,7 +314,12 @@ class _Badge extends StatelessWidget {
+ class _CustomerTile extends StatelessWidget {
+   final CustomerSummary summary;
+   final VoidCallback onTap;
+-  const _CustomerTile({required this.summary, required this.onTap});
++  final VoidCallback onTagih;
++  const _CustomerTile({
++    required this.summary,
++    required this.onTap,
++    required this.onTagih,
++  });
+ 
+   @override
+   Widget build(BuildContext context) {
+@@ -299,9 +340,23 @@ class _CustomerTile extends StatelessWidget {
+             color: status == DebtStatus.lunas ? null : color,
+             fontWeight: FontWeight.w500),
+       ),
+-      trailing: Text(
+-        rupiah(summary.balance),
+-        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
++      trailing: Row(
++        mainAxisSize: MainAxisSize.min,
++        children: [
++          if (status == DebtStatus.telat ||
++              status == DebtStatus.mendekati)
++            IconButton(
++              tooltip: 'Tagih lewat WhatsApp',
++              icon: const Icon(Icons.chat_outlined),
++              color: color,
++              onPressed: onTagih,
++            ),
++          Text(
++            rupiah(summary.balance),
++            style: const TextStyle(
++                fontWeight: FontWeight.bold, fontSize: 16),
++          ),
++        ],
+       ),
+     );
+   }
+diff --git a/lib/screens/settings_screen.dart b/lib/screens/settings_screen.dart
+index 584f9f0..53b35d8 100644
+--- a/lib/screens/settings_screen.dart
++++ b/lib/screens/settings_screen.dart
+@@ -10,6 +10,7 @@ import '../db.dart';
+ import '../services/backup_crypto_service.dart';
+ import '../services/backup_status.dart';
+ import '../services/google_drive_service.dart';
++import '../widgets/app_lock_settings_card.dart';
+ 
+ class SettingsScreen extends StatefulWidget {
+   const SettingsScreen({super.key});
+@@ -149,6 +150,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
+     setState(() => _busy = true);
+ 
+     try {
++      final revision = BackupStatus.instance.revision;
+       final data = await AppDb.instance.exportBackup();
+       final json = const JsonEncoder.withIndent('  ').convert(data);
+       final now = DateTime.now();
+@@ -166,6 +168,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
+       );
+ 
+       if (result != null) {
++        await BackupStatus.instance.markLocalBackedUp(revision);
+         _message('File backup berhasil disimpan.');
+       }
+     } catch (e) {
+@@ -540,6 +543,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
+             ),
+           ),
+           const SizedBox(height: 12),
++          const AppLockSettingsCard(),
++          const SizedBox(height: 12),
+           Card(
+             child: Padding(
+               padding: const EdgeInsets.all(16),
+diff --git a/lib/services/backup_status.dart b/lib/services/backup_status.dart
+index b415e71..6136a57 100644
+--- a/lib/services/backup_status.dart
++++ b/lib/services/backup_status.dart
+@@ -3,24 +3,28 @@ import 'dart:async';
+ import 'package:flutter/foundation.dart';
+ import 'package:shared_preferences/shared_preferences.dart';
+ 
+-/// Melacak apakah ada perubahan data yang belum di-backup ke Google Drive.
++/// Melacak apakah ada perubahan data yang belum di-backup, terpisah untuk
++/// backup lokal (file di HP) dan Google Drive.
+ ///
+-/// [dirty]: null = belum diketahui, true = ada perubahan belum di-backup,
+-/// false = data sudah di-backup.
++/// Nilai notifier: null = belum diketahui, true = ada perubahan belum
++/// di-backup, false = sudah di-backup.
+ class BackupStatus {
+   BackupStatus._();
+ 
+   static final BackupStatus instance = BackupStatus._();
+ 
+-  static const String _dirtyKey = 'backup_dirty';
++  // Kunci lama dipertahankan untuk Google Drive agar status lama tidak hilang.
++  static const String _driveKey = 'backup_dirty';
++  static const String _localKey = 'backup_local_dirty';
+ 
+-  final ValueNotifier<bool?> dirty = ValueNotifier<bool?>(null);
++  final ValueNotifier<bool?> driveDirty = ValueNotifier<bool?>(null);
++  final ValueNotifier<bool?> localDirty = ValueNotifier<bool?>(null);
+ 
+   bool _loaded = false;
+   int _revision = 0;
+ 
+   /// Naik setiap data berubah. Dipakai agar perubahan yang terjadi saat
+-  /// upload berlangsung tidak ikut dianggap sudah ter-backup.
++  /// backup berlangsung tidak ikut dianggap sudah ter-backup.
+   int get revision => _revision;
+ 
+   /// Dipanggil sekali saat app dibuka. Panggilan berikutnya diabaikan.
+@@ -29,37 +33,53 @@ class BackupStatus {
+     _loaded = true;
+ 
+     try {
+-      final stored = await SharedPreferencesAsync().getBool(_dirtyKey);
++      final prefs = SharedPreferencesAsync();
++      final drive = await prefs.getBool(_driveKey);
++      final local = await prefs.getBool(_localKey);
+ 
+       // Pertama kali: kalau sudah ada data tapi belum pernah di-backup,
+       // anggap belum ter-backup. Kalau masih kosong, anggap aman.
+-      final value = stored ?? hasData;
++      driveDirty.value ??= drive ?? hasData;
++      localDirty.value ??= local ?? hasData;
+ 
+-      if (dirty.value == null) dirty.value = value;
+-      if (stored == null) await _persist(value);
++      if (drive == null) await _persist(_driveKey, driveDirty.value ?? hasData);
++      if (local == null) await _persist(_localKey, localDirty.value ?? hasData);
+     } catch (e) {
+       debugPrint('Gagal memuat status backup: $e');
+-      dirty.value ??= hasData;
++      driveDirty.value ??= hasData;
++      localDirty.value ??= hasData;
+     }
+   }
+ 
+   void markDirty() {
+     _revision++;
+-    dirty.value = true;
+-    unawaited(_persist(true));
++    driveDirty.value = true;
++    localDirty.value = true;
++    unawaited(_persist(_driveKey, true));
++    unawaited(_persist(_localKey, true));
+   }
+ 
+-  /// Tandai sudah ter-backup, hanya jika data tidak berubah sejak [revision]
+-  /// dicatat (sebelum backup dibuat).
+-  Future<void> markBackedUp(int revision) async {
++  /// Tandai Google Drive sudah ter-backup, hanya jika data tidak berubah
++  /// sejak [revision] dicatat (sebelum backup dibuat).
++  Future<void> markDriveBackedUp(int revision) async {
+     if (revision != _revision) return;
+-    dirty.value = false;
+-    await _persist(false);
++    driveDirty.value = false;
++    await _persist(_driveKey, false);
+   }
+ 
+-  Future<void> _persist(bool value) async {
++  /// Sama seperti [markDriveBackedUp], untuk backup file lokal.
++  Future<void> markLocalBackedUp(int revision) async {
++    if (revision != _revision) return;
++    localDirty.value = false;
++    await _persist(_localKey, false);
++  }
++
++  /// Nama lama, tetap dipakai oleh alur backup Google Drive.
++  Future<void> markBackedUp(int revision) => markDriveBackedUp(revision);
++
++  Future<void> _persist(String key, bool value) async {
+     try {
+-      await SharedPreferencesAsync().setBool(_dirtyKey, value);
++      await SharedPreferencesAsync().setBool(key, value);
+     } catch (e) {
+       debugPrint('Gagal menyimpan status backup: $e');
+     }
+diff --git a/lib/widgets/backup_indicator.dart b/lib/widgets/backup_indicator.dart
+index ea524af..8a396c7 100644
+--- a/lib/widgets/backup_indicator.dart
++++ b/lib/widgets/backup_indicator.dart
+@@ -4,8 +4,8 @@ import 'package:flutter/material.dart';
+ 
+ import '../services/backup_status.dart';
+ 
+-/// Bulatan status backup untuk AppBar.
+-/// Merah/biru bergantian = belum di-backup. Hijau = sudah di-backup.
++/// Dua bulatan status di AppBar: ikon HP = backup lokal, ikon awan = Google
++/// Drive. Merah/biru bergantian = belum di-backup. Hijau = sudah di-backup.
+ class BackupIndicator extends StatefulWidget {
+   const BackupIndicator({super.key, this.onTap});
+ 
+@@ -22,66 +22,102 @@ class _BackupIndicatorState extends State<BackupIndicator> {
+   @override
+   void initState() {
+     super.initState();
+-    BackupStatus.instance.dirty.addListener(_onChanged);
++    BackupStatus.instance.localDirty.addListener(_onChanged);
++    BackupStatus.instance.driveDirty.addListener(_onChanged);
+     _syncTimer();
+   }
+ 
+   @override
+   void dispose() {
+-    BackupStatus.instance.dirty.removeListener(_onChanged);
++    BackupStatus.instance.localDirty.removeListener(_onChanged);
++    BackupStatus.instance.driveDirty.removeListener(_onChanged);
+     _timer?.cancel();
+     super.dispose();
+   }
+ 
++  bool get _anyDirty =>
++      BackupStatus.instance.localDirty.value == true ||
++      BackupStatus.instance.driveDirty.value == true;
++
+   void _onChanged() {
+     _syncTimer();
+     if (mounted) setState(() {});
+   }
+ 
+   void _syncTimer() {
+-    final isDirty = BackupStatus.instance.dirty.value == true;
+-
+-    if (isDirty && _timer == null) {
++    if (_anyDirty && _timer == null) {
+       _timer = Timer.periodic(const Duration(milliseconds: 600), (_) {
+         if (mounted) setState(() => _alt = !_alt);
+       });
+-    } else if (!isDirty && _timer != null) {
++    } else if (!_anyDirty && _timer != null) {
+       _timer!.cancel();
+       _timer = null;
+       _alt = false;
+     }
+   }
+ 
++  String _describe(bool? state) {
++    if (state == null) return 'belum diketahui';
++    return state ? 'ada perubahan belum di-backup' : 'sudah di-backup';
++  }
++
++  Color _colorFor(bool? state) {
++    if (state == null) return Colors.grey;
++    if (state) return _alt ? Colors.blue : Colors.red;
++    return Colors.green;
++  }
++
++  Widget _item(IconData icon, bool? state) {
++    final color = _colorFor(state);
++    return Row(
++      mainAxisSize: MainAxisSize.min,
++      children: [
++        Icon(icon, size: 18),
++        const SizedBox(width: 4),
++        AnimatedContainer(
++          duration: const Duration(milliseconds: 250),
++          width: 12,
++          height: 12,
++          decoration: BoxDecoration(
++            color: color,
++            shape: BoxShape.circle,
++            boxShadow: [
++              BoxShadow(
++                color: color.withOpacity(0.5),
++                blurRadius: 5,
++                spreadRadius: 1,
++              ),
++            ],
++          ),
++        ),
++      ],
++    );
++  }
++
+   @override
+   Widget build(BuildContext context) {
+-    final state = BackupStatus.instance.dirty.value;
++    final local = BackupStatus.instance.localDirty.value;
++    final drive = BackupStatus.instance.driveDirty.value;
+ 
+     // Status belum diketahui: jangan tampilkan apa pun supaya tidak salah.
+-    if (state == null) return const SizedBox.shrink();
+-
+-    final Color color = state
+-        ? (_alt ? Colors.blue : Colors.red)
+-        : Colors.green;
+-
+-    return IconButton(
+-      tooltip: state
+-          ? 'Ada perubahan yang belum di-backup ke Google Drive'
+-          : 'Data sudah di-backup ke Google Drive',
+-      onPressed: widget.onTap,
+-      icon: AnimatedContainer(
+-        duration: const Duration(milliseconds: 250),
+-        width: 16,
+-        height: 16,
+-        decoration: BoxDecoration(
+-          color: color,
+-          shape: BoxShape.circle,
+-          boxShadow: [
+-            BoxShadow(
+-              color: color.withOpacity(0.5),
+-              blurRadius: 6,
+-              spreadRadius: 1,
+-            ),
+-          ],
++    if (local == null && drive == null) return const SizedBox.shrink();
++
++    return Tooltip(
++      message: 'Backup lokal: ${_describe(local)}\n'
++          'Backup Google Drive: ${_describe(drive)}',
++      child: InkWell(
++        onTap: widget.onTap,
++        borderRadius: BorderRadius.circular(20),
++        child: Padding(
++          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
++          child: Row(
++            mainAxisSize: MainAxisSize.min,
++            children: [
++              _item(Icons.smartphone, local),
++              const SizedBox(width: 10),
++              _item(Icons.cloud_outlined, drive),
++            ],
++          ),
+         ),
+       ),
+     );
+diff --git a/pubspec.yaml b/pubspec.yaml
+index 90d41c3..5935567 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -13,6 +13,7 @@ dependencies:
+   path: ^1.9.0
+   url_launcher: ^6.3.0
+   file_picker: ^12.3.0
++  local_auth: ^3.0.0
+ 
+   google_sign_in: ^7.2.0
+   googleapis: ^19.0.0
 
-===== FILE UNTRACKED =====
+===== 11. FILE BARU YANG BELUM DILACAK GIT =====
 add_backup_indicator.sh
 backup_before_revert_lightweight_20261115_133121/google_drive_service.dart
 backup_cloud_reconnect_20261115_133235/settings_screen.dart
@@ -140,7 +932,10 @@ patch_google_session.py
 patchv3.py
 tambah_fitur.sh
 
-===== KESIMPULAN OTOMATIS =====
-Commit sama, tetapi masih ada perubahan lokal yang belum di-commit.
+===== 12. PEMERIKSAAN PATCH =====
 
-===== SELESAI =====
+===== 13. SCRIPT TAMBAH FITUR =====
+-rw-rw----. 1 u0_a523 u0_a523 45286 Nov 16 19:34 tambah_fitur.sh
+d58a0bbcebcc93dd3f8e364b4d4fa012b80844e37edfdc78f00b444c7ecc7178  tambah_fitur.sh
+
+===== AKHIR AUDIT =====
