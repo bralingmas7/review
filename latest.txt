@@ -1,60 +1,203 @@
-===== AUDIT FINAL SEBELUM PUSH =====
-Tue Nov 17 06:18:58 WIB 2026
+===== SHOP MESSAGE SETTINGS =====
+     1	import 'package:shared_preferences/shared_preferences.dart';
+     2	
+     3	class ShopMessageSettings {
+     4	  const ShopMessageSettings({
+     5	    this.shopName = '',
+     6	    this.header = '',
+     7	    this.footer = '',
+     8	  });
+     9	
+    10	  final String shopName;
+    11	  final String header;
+    12	  final String footer;
+    13	
+    14	  static const _nameKey = 'shop_message_name';
+    15	  static const _headerKey = 'shop_message_header';
+    16	  static const _footerKey = 'shop_message_footer';
+    17	
+    18	  static Future<ShopMessageSettings> load() async {
+    19	    final prefs = SharedPreferencesAsync();
+    20	    return ShopMessageSettings(
+    21	      shopName: await prefs.getString(_nameKey) ?? '',
+    22	      header: await prefs.getString(_headerKey) ?? '',
+    23	      footer: await prefs.getString(_footerKey) ?? '',
+    24	    );
+    25	  }
+    26	
+    27	  Future<void> save() async {
+    28	    final prefs = SharedPreferencesAsync();
+    29	    await prefs.setString(_nameKey, shopName.trim());
+    30	    await prefs.setString(_headerKey, header.trim());
+    31	    await prefs.setString(_footerKey, footer.trim());
+    32	  }
+    33	}
 
-===== STATUS SELURUH REPO =====
+===== PEMANGGIL SHOP SETTINGS =====
+lib/models.dart:216:List<Txn> activeDebtCycle(List<Txn> txns) {
+lib/models.dart:233:List<Txn> latestClosedDebtCycle(List<Txn> txns) {
+lib/screens/customer_screen.dart:75:      await _sendSettlementReceipt();
+lib/screens/customer_screen.dart:79:  Future<void> _sendSettlementReceipt() async {
+lib/screens/customer_screen.dart:81:    final cycle = latestClosedDebtCycle(_txns);
+lib/screens/customer_screen.dart:107:    final messageSettings = await ShopMessageSettings.load();
+lib/screens/customer_screen.dart:152:    final messageSettings = await ShopMessageSettings.load();
+lib/screens/customer_screen.dart:153:    final cycle = activeDebtCycle(_txns);
+lib/screens/customer_screen.dart:191:        settlement ? latestClosedDebtCycle(_txns) : List<Txn>.from(_txns);
+lib/screens/customer_screen.dart:198:    final settings = await ShopMessageSettings.load();
+lib/screens/customer_screen.dart:281:              if (latestClosedDebtCycle(_txns).isNotEmpty)
+lib/screens/home_screen.dart:57:    final cycle = activeDebtCycle(txns);
+lib/screens/home_screen.dart:58:    final messageSettings = await ShopMessageSettings.load();
+lib/screens/settings_screen.dart:63:      final settings = await ShopMessageSettings.load();
+lib/screens/settings_screen.dart:77:      await ShopMessageSettings(
+lib/screens/receipt_image_screen.dart:17:  final ShopMessageSettings shopSettings;
+lib/services/shop_message_settings.dart:3:class ShopMessageSettings {
+lib/services/shop_message_settings.dart:4:  const ShopMessageSettings({
+lib/services/shop_message_settings.dart:18:  static Future<ShopMessageSettings> load() async {
+lib/services/shop_message_settings.dart:20:    return ShopMessageSettings(
+
+===== MENU DAN NAVIGASI PNG =====
+   170	    if (!ok && mounted) {
+   171	      await Clipboard.setData(ClipboardData(text: msg));
+   172	      _snack('WhatsApp tidak bisa dibuka. Pesan disalin, tempel manual ya.');
+   173	    }
+   174	  }
+   175	
+   176	  Future<void> _copyRecap() async {
+   177	    final c = _customer!;
+   178	    await Clipboard.setData(ClipboardData(
+   179	      text: buildRecap(
+   180	        name: c.name,
+   181	        balance: computeBalance(_txns),
+   182	        txns: _txns,
+   183	      ),
+   184	    ));
+   185	    if (mounted) _snack('Rekap disalin');
+   186	  }
+   187	
+   188	  Future<void> _openPng({required bool settlement}) async {
+   189	    final c = _customer!;
+   190	    final selectedTxns =
+   191	        settlement ? latestClosedDebtCycle(_txns) : List<Txn>.from(_txns);
+   192	
+   193	    if (settlement && selectedTxns.isEmpty) {
+   194	      _snack('Belum ada siklus utang yang lunas.');
+   195	      return;
+   196	    }
+   197	
+   198	    final settings = await ShopMessageSettings.load();
+   199	    if (!mounted) return;
+   200	
+   201	    await Navigator.push<void>(
+   202	      context,
+   203	      MaterialPageRoute(
+   204	        builder: (_) => ReceiptImageScreen(
+   205	          customer: c,
+   206	          txns: selectedTxns,
+   207	          balance: computeBalance(_txns),
+   208	          shopSettings: settings,
+   209	          settlement: settlement,
+   210	        ),
+   211	      ),
+   212	    );
+   213	  }
+   214	
+   215	  Future<void> _edit() async {
+   216	    final updated = await showCustomerForm(context, existing: _customer);
+   217	    if (updated == null) return;
+   218	    await AppDb.instance.updateCustomer(updated);
+   219	    await _load();
+   220	  }
+   221	
+   222	  Future<void> _deleteCustomer() async {
+   223	    final c = _customer!;
+   224	    final ok = await confirmDialog(
+   225	      context,
+   226	      title: 'Hapus pelanggan?',
+   227	      message:
+   228	          '${c.name} beserta semua catatan utangnya akan dihapus permanen.',
+   229	    );
+   230	    if (!ok) return;
+   231	    await AppDb.instance.deleteCustomer(c.id!);
+   232	    if (mounted) Navigator.pop(context);
+   233	  }
+   234	
+   235	  @override
+   236	  Widget build(BuildContext context) {
+   237	    if (_loading || _customer == null) {
+   238	      return Scaffold(
+   239	        appBar: AppBar(),
+   240	        body: const Center(child: CircularProgressIndicator()),
+   241	      );
+   242	    }
+   243	
+   244	    final c = _customer!;
+   245	    final summary = CustomerSummary(
+   246	      customer: c,
+   247	      balance: computeBalance(_txns),
+   248	      nextDue: nextDueDate(_txns),
+   249	    );
+   250	    final history = [..._txns]..sort((a, b) {
+   251	        final byDate = b.date.compareTo(a.date);
+   252	        return byDate != 0 ? byDate : (b.id ?? 0).compareTo(a.id ?? 0);
+   253	      });
+   254	
+   255	    return Scaffold(
+   256	      appBar: AppBar(
+   257	        title: Text(c.name),
+   258	        actions: [
+   259	          PopupMenuButton<String>(
+   260	            onSelected: (v) {
+   261	              switch (v) {
+   262	                case 'edit':
+   263	                  _edit();
+   264	                case 'recap':
+   265	                  _copyRecap();
+   266	                case 'recap_png':
+   267	                  _openPng(settlement: false);
+   268	                case 'settlement_png':
+   269	                  _openPng(settlement: true);
+   270	                case 'delete':
+   271	                  _deleteCustomer();
+   272	              }
+   273	            },
+   274	            itemBuilder: (_) => [
+   275	              const PopupMenuItem(value: 'edit', child: Text('Ubah data')),
+   276	              const PopupMenuItem(value: 'recap', child: Text('Salin rekap')),
+   277	              const PopupMenuItem(
+   278	                value: 'recap_png',
+   279	                child: Text('Simpan rekap sebagai PNG'),
+   280	              ),
+   281	              if (latestClosedDebtCycle(_txns).isNotEmpty)
+   282	                const PopupMenuItem(
+   283	                  value: 'settlement_png',
+   284	                  child: Text('Bukti pelunasan PNG'),
+   285	                ),
+   286	              const PopupMenuItem(value: 'delete', child: Text('Hapus pelanggan')),
+   287	            ],
+   288	          ),
+   289	        ],
+   290	      ),
+   291	      body: ListView.builder(
+   292	        padding: const EdgeInsets.only(bottom: 32),
+   293	        itemCount: history.length + 1,
+   294	        itemBuilder: (_, i) {
+   295	          if (i == 0) return _Header(summary: summary, onAdd: _addTxn, onTagih: _tagih);
+   296	          final t = history[i - 1];
+   297	          return _TxnTile(txn: t, onLongPress: () => _deleteTxn(t));
+   298	        },
+   299	      ),
+   300	    );
+
+===== STATUS FILE NON-BACKUP =====
  M .github/workflows/build-apk.yml
  M lib/models.dart
  M lib/screens/customer_screen.dart
  M lib/screens/home_screen.dart
  M lib/screens/settings_screen.dart
- M lib/services/backup_status.dart
  M lib/services/google_drive_service.dart
  M lib/status_style.dart
  M lib/utils.dart
- M lib/widgets/backup_indicator.dart
  M pubspec.yaml
-?? add_backup_indicator.sh
-?? backup_app_lock_integrity_20261116_210514/
-?? backup_app_lock_recovery_20261116_210009/
-?? backup_app_lock_safe_20261116_205501/
-?? backup_app_lock_safe_20261116_205635/
-?? backup_app_lock_safe_20261116_205712/
-?? backup_app_lock_storage_20261116_211528/
-?? backup_auto_backup_dependencies_20261116_234527/
-?? backup_backup_status_race_20261116_231910/
-?? backup_before_revert_lightweight_20261115_133121/
-?? backup_cloud_reconnect_20261115_133235/
-?? backup_diagnostik_google_20261115_111942/
-?? backup_fix_google_import_20261115_104148/
-?? backup_google_lightweight_restore_20261116_233447/
-?? backup_google_login_20261114_185251/
-?? backup_google_restore_20261115_132224/
-?? backup_google_session_20261115_102650/
-?? backup_google_session_fix_20261115_123805/
-?? backup_google_session_fix_20261115_124655/
-?? backup_guard_whatsapp_20261116_230413/
-?? backup_guard_whatsapp_20261116_230532/
-?? backup_guard_whatsapp_v2_20261116_230720/
-?? backup_listener_google_20261115_125040/
-?? backup_pengaturan_warung_20261116_222928/
-?? backup_png_filename_20261117_061635/
-?? backup_remove_app_lock_20261116_213512/
-?? backup_remove_app_lock_20261116_213908/
-?? backup_saldo_piutang_20261116_221958/
-?? backup_sebelum_cloud_ui_20261114_225058/
-?? backup_sebelum_cloud_ui_20261114_225846/
-?? backup_sebelum_fix_sqlite_20261114_231957/
-?? backup_sebelum_google_20261114_184301/
-?? backup_sebelum_integrasi_drive_20261114_221515/
-?? backup_sebelum_pin_ffi_20261114_230953/
-?? backup_sebelum_pin_shared_preferences_20261115_124930/
-?? backup_sebelum_settings_20261114_164203/
-?? backup_sebelum_test_restore_20261114_230544/
-?? backup_sebelum_update_siklus/
-?? backup_sebelum_whatsapp_gambar_20261116_221203/
-?? backup_settings_warung_ui_20261116_223241/
-?? backup_status_google_20261114_192221/
-?? backup_whatsapp_newline_20261116_225847/
 ?? fix_diag.sh
 ?? fix_google_session.sh
 ?? fix_ux.sh
@@ -64,204 +207,4 @@ Tue Nov 17 06:18:58 WIB 2026
 ?? patchv3.py
 ?? tambah_fitur.sh
 
-===== RINGKASAN PERUBAHAN TRACKED =====
- .github/workflows/build-apk.yml        |  24 ++++++++
- lib/models.dart                        |  57 ++++++++++++------
- lib/screens/customer_screen.dart       |  87 +++++++++++++++++++++++----
- lib/screens/home_screen.dart           | 101 ++++++++++++++++++++++++++++---
- lib/screens/settings_screen.dart       | 107 +++++++++++++++++++++++++++++++++
- lib/services/backup_status.dart        |  77 ++++++++++++++++--------
- lib/services/google_drive_service.dart |  28 ++++++++-
- lib/status_style.dart                  |   3 +
- lib/utils.dart                         |  56 ++++++++++++++---
- lib/widgets/backup_indicator.dart      | 104 +++++++++++++++++++++-----------
- pubspec.yaml                           |   4 ++
- 11 files changed, 544 insertions(+), 104 deletions(-)
-
-===== FILE TRACKED YANG BERUBAH =====
-.github/workflows/build-apk.yml
-lib/models.dart
-lib/screens/customer_screen.dart
-lib/screens/home_screen.dart
-lib/screens/settings_screen.dart
-lib/services/backup_status.dart
-lib/services/google_drive_service.dart
-lib/status_style.dart
-lib/utils.dart
-lib/widgets/backup_indicator.dart
-pubspec.yaml
-
-===== FILE BARU / UNTRACKED =====
-add_backup_indicator.sh
-backup_app_lock_integrity_20261116_210514/app_lock_service.dart
-backup_app_lock_integrity_20261116_210514/lock_screen.dart
-backup_app_lock_integrity_20261116_210514/pin_screen.dart
-backup_app_lock_recovery_20261116_210009/app_lock_gate.dart
-backup_app_lock_recovery_20261116_210009/app_lock_service.dart
-backup_app_lock_safe_20261116_205501/app_lock_gate.dart
-backup_app_lock_safe_20261116_205501/app_lock_service.dart
-backup_app_lock_safe_20261116_205635/app_lock_gate.dart
-backup_app_lock_safe_20261116_205635/app_lock_service.dart
-backup_app_lock_safe_20261116_205712/app_lock_gate.dart
-backup_app_lock_safe_20261116_205712/app_lock_service.dart
-backup_app_lock_storage_20261116_211528/app_lock_service.dart
-backup_auto_backup_dependencies_20261116_234527/build-apk.yml
-backup_auto_backup_dependencies_20261116_234527/pubspec.yaml
-backup_backup_status_race_20261116_231910/backup_status.dart
-backup_before_revert_lightweight_20261115_133121/google_drive_service.dart
-backup_cloud_reconnect_20261115_133235/settings_screen.dart
-backup_diagnostik_google_20261115_111942/google_drive_service.dart
-backup_diagnostik_google_20261115_111942/settings_screen.dart
-backup_fix_google_import_20261115_104148/settings_screen.dart
-backup_google_lightweight_restore_20261116_233447/lib/services/google_drive_service.dart
-backup_google_login_20261114_185251/settings_screen.dart
-backup_google_restore_20261115_132224/google_drive_service.dart
-backup_google_session_20261115_102650/google_drive_service.dart
-backup_google_session_20261115_102650/settings_screen.dart
-backup_google_session_fix_20261115_123805/pubspec.yaml
-backup_google_session_fix_20261115_124655/lib/screens/settings_screen.dart
-backup_google_session_fix_20261115_124655/lib/services/google_drive_service.dart
-backup_google_session_fix_20261115_124655/pubspec.yaml
-backup_guard_whatsapp_20261116_230413/customer_screen.dart
-backup_guard_whatsapp_20261116_230413/home_screen.dart
-backup_guard_whatsapp_20261116_230532/customer_screen.dart
-backup_guard_whatsapp_20261116_230532/home_screen.dart
-backup_guard_whatsapp_v2_20261116_230720/customer_screen.dart
-backup_guard_whatsapp_v2_20261116_230720/home_screen.dart
-backup_listener_google_20261115_125040/settings_screen.dart
-backup_pengaturan_warung_20261116_222928/customer_screen.dart
-backup_pengaturan_warung_20261116_222928/home_screen.dart
-backup_pengaturan_warung_20261116_222928/settings_screen.dart
-backup_pengaturan_warung_20261116_222928/utils.dart
-backup_png_filename_20261117_061635/receipt_image_screen.dart
-backup_remove_app_lock_20261116_213512/.github/workflows/build-apk.yml
-backup_remove_app_lock_20261116_213512/lib/main.dart
-backup_remove_app_lock_20261116_213512/lib/screens/lock_screen.dart
-backup_remove_app_lock_20261116_213512/lib/screens/pin_screen.dart
-backup_remove_app_lock_20261116_213512/lib/screens/settings_screen.dart
-backup_remove_app_lock_20261116_213512/lib/services/app_lock_service.dart
-backup_remove_app_lock_20261116_213512/lib/widgets/app_lock_gate.dart
-backup_remove_app_lock_20261116_213512/lib/widgets/app_lock_settings_card.dart
-backup_remove_app_lock_20261116_213512/lib/widgets/pin_pad.dart
-backup_remove_app_lock_20261116_213512/pubspec.yaml
-backup_remove_app_lock_20261116_213908/.github/workflows/build-apk.yml
-backup_remove_app_lock_20261116_213908/lib/main.dart
-backup_remove_app_lock_20261116_213908/lib/screens/settings_screen.dart
-backup_remove_app_lock_20261116_213908/pubspec.yaml
-backup_saldo_piutang_20261116_221958/lib/models.dart
-backup_saldo_piutang_20261116_221958/lib/screens/customer_screen.dart
-backup_saldo_piutang_20261116_221958/lib/screens/home_screen.dart
-backup_saldo_piutang_20261116_221958/lib/status_style.dart
-backup_saldo_piutang_20261116_221958/lib/utils.dart
-backup_sebelum_cloud_ui_20261114_225058/settings_screen.dart
-backup_sebelum_cloud_ui_20261114_225846/settings_screen.dart
-backup_sebelum_fix_sqlite_20261114_231957/pubspec.yaml
-backup_sebelum_google_20261114_184301/pubspec.yaml
-backup_sebelum_integrasi_drive_20261114_221515/lib/services/google_drive_service.dart
-backup_sebelum_pin_ffi_20261114_230953/pubspec.yaml
-backup_sebelum_pin_shared_preferences_20261115_124930/pubspec.yaml
-backup_sebelum_settings_20261114_164203/db.dart
-backup_sebelum_settings_20261114_164203/home_screen.dart
-backup_sebelum_settings_20261114_164203/pubspec.yaml
-backup_sebelum_test_restore_20261114_230544/db.dart
-backup_sebelum_test_restore_20261114_230544/models.dart
-backup_sebelum_update_siklus/20261114_160730/lib/models.dart
-backup_sebelum_update_siklus/20261114_160730/lib/screens/customer_screen.dart
-backup_sebelum_update_siklus/20261114_160730/lib/utils.dart
-backup_sebelum_update_siklus/penyempurnaan_20261114_161231/customer_screen.dart
-backup_sebelum_update_siklus/penyempurnaan_20261114_161231/utils.dart
-backup_sebelum_whatsapp_gambar_20261116_221203/lib/db.dart
-backup_sebelum_whatsapp_gambar_20261116_221203/lib/main.dart
-backup_sebelum_whatsapp_gambar_20261116_221203/lib/models.dart
-backup_sebelum_whatsapp_gambar_20261116_221203/lib/screens/customer_screen.dart
-backup_sebelum_whatsapp_gambar_20261116_221203/lib/screens/home_screen.dart
-backup_sebelum_whatsapp_gambar_20261116_221203/lib/screens/settings_screen.dart
-backup_sebelum_whatsapp_gambar_20261116_221203/lib/services/backup_crypto_service.dart
-backup_sebelum_whatsapp_gambar_20261116_221203/lib/services/backup_status.dart
-backup_sebelum_whatsapp_gambar_20261116_221203/lib/services/google_drive_service.dart
-backup_sebelum_whatsapp_gambar_20261116_221203/lib/utils.dart
-backup_sebelum_whatsapp_gambar_20261116_221203/lib/widgets/backup_indicator.dart
-backup_sebelum_whatsapp_gambar_20261116_221203/pubspec.yaml
-backup_settings_warung_ui_20261116_223241/settings_screen.dart
-backup_status_google_20261114_192221/google_drive_service.dart
-backup_status_google_20261114_192221/settings_screen.dart
-backup_whatsapp_newline_20261116_225847/utils.dart
-fix_diag.sh
-fix_google_session.sh
-fix_ux.sh
-lib/screens/receipt_image_screen.dart
-lib/services/shop_message_settings.dart
-patch_google_session.py
-patchv3.py
-tambah_fitur.sh
-
-===== PERUBAHAN YANG SUDAH DI-STAGE =====
-
-===== DEPENDENCY PNG =====
-24:  gal: ^2.3.3
-25:  share_plus: ^10.1.4
-
-===== INTEGRASI PNG =====
-11:import 'receipt_image_screen.dart';
-188:  Future<void> _openPng({required bool settlement}) async {
-267:                  _openPng(settlement: false);
-269:                  _openPng(settlement: true);
-279:                child: Text('Simpan rekap sebagai PNG'),
-284:                  child: Text('Bukti pelunasan PNG'),
-
-===== API SIMPAN DAN BAGIKAN PNG =====
-87-    if (bytes == null || _working) return;
-88-
-89-    setState(() => _working = true);
-90-    try {
-91:      await Gal.putImageBytes(
-92-        bytes,
-93-        name: _fileName.replaceAll('.png', ''),
-94-      );
-95-      if (mounted) {
-96-        ScaffoldMessenger.of(context).showSnackBar(
-97-          const SnackBar(content: Text('PNG berhasil disimpan ke galeri.')),
-98-        );
-99-      }
-100-    } catch (e) {
-101-      if (mounted) {
-102-        ScaffoldMessenger.of(context).showSnackBar(
-103-          SnackBar(content: Text('Gagal menyimpan PNG: $e')),
-104-        );
-105-      }
-106-    } finally {
---
-113-    if (bytes == null || _working) return;
-114-
-115-    setState(() => _working = true);
-116-    try {
-117:      await Share.shareXFiles(
-118-        [
-119-          XFile.fromData(
-120-            bytes,
-121-            mimeType: 'image/png',
-122-            name: _fileName,
-123-          ),
-124-        ],
-125:        fileNameOverrides: [_fileName],
-126-      );
-127-    } catch (e) {
-128-      if (mounted) {
-129-        ScaffoldMessenger.of(context).showSnackBar(
-130-          SnackBar(content: Text('Gagal membagikan PNG: $e')),
-131-        );
-132-      }
-133-    } finally {
-134-      if (mounted) setState(() => _working = false);
-135-    }
-136-  }
-137-
-138-  @override
-139-  Widget build(BuildContext context) {
-140-    final sorted = [...widget.txns]..sort((a, b) {
-
-===== PEMERIKSAAN PATCH TRACKED =====
-EXIT TRACKED: 0
-
-===== PEMERIKSAAN PATCH STAGED =====
-EXIT STAGED: 0
+===== PATCH CHECK =====
