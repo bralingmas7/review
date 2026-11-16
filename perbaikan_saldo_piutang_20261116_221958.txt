@@ -1,0 +1,9 @@
+===== WAKTU =====
+Mon Nov 16 22:19:59 WIB 2026
+===== BACKUP =====
+/data/data/com.termux/files/home/buku/backup_saldo_piutang_20261116_221958
+===== HASIL PATCH =====
+Exit code: 0
+===== FORMAT =====
+The program dart is not installed. Install it by executing:
+ pkg install dart
