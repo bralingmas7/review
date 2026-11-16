@@ -1,12 +1,36 @@
-===== PENGHAPUSAN APP LOCK =====
-Mon Nov 16 21:39:08 WIB 2026
+===== MAIN DART =====
 
-===== BACKUP =====
-BACKUP OK: lib/main.dart
-BACKUP OK: lib/screens/settings_screen.dart
-BACKUP OK: pubspec.yaml
-BACKUP OK: .github/workflows/build-apk.yml
-Backup: backup_remove_app_lock_20261116_213908
+===== SETTINGS =====
 
-===== VALIDASI DAN PERUBAHAN =====
-GAGAL: import AppLockGate tidak cocok.
+===== WORKFLOW =====
+48-          sed -i 's/android:label="[^"]*"/android:label="Buku Utang Warung"/' \
+49-            android/app/src/main/AndroidManifest.xml
+50-
+51:      # Siapkan keystore dari GitHub Secrets
+52:      - name: Siapkan keystore
+53-        env:
+54-          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+55-        run: |
+--
+61-          fi
+62-
+63-          printf '%s' "$KEYSTORE_BASE64" \
+64:            | base64 --decode > android/app/upload-keystore.jks
+65-
+66:          test -s android/app/upload-keystore.jks
+67-          echo "Keystore berhasil disiapkan"
+68-
+69-      # Konfigurasi signing Kotlin DSL
+--
+133-      - name: Jalankan test
+134-        run: flutter test
+135-
+136:      # Build menggunakan keystore permanen
+137-      - name: Build APK release
+138-        env:
+139:          KEYSTORE_FILE: upload-keystore.jks
+140-          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+141-          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+142-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+
+===== FILE APP LOCK =====
