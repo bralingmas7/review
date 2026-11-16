@@ -1,113 +1,747 @@
-===== AUDIT STATUS PIUTANG =====
-Tue Nov 17 06:58:36 WIB 2026
+===== AUDIT SALDO NEGATIF DAN SIKLUS UTANG =====
+Tue Nov 17 06:59:25 WIB 2026
 
-===== SEMUA REFERENSI DEBT STATUS =====
-lib/utils.dart:33:  switch (s.status(now)) {
-lib/utils.dart:34:    case DebtStatus.piutang:
-lib/utils.dart:36:    case DebtStatus.lunas:
-lib/utils.dart:38:    case DebtStatus.telat:
-lib/utils.dart:41:    case DebtStatus.mendekati:
-lib/utils.dart:44:    case DebtStatus.lancar:
-lib/status_style.dart:11:Color statusColor(DebtStatus s) {
-lib/status_style.dart:12:  switch (s) {
-lib/status_style.dart:13:    case DebtStatus.piutang:
-lib/status_style.dart:15:    case DebtStatus.lunas:
-lib/status_style.dart:17:    case DebtStatus.lancar:
-lib/status_style.dart:19:    case DebtStatus.mendekati:
-lib/status_style.dart:21:    case DebtStatus.telat:
-lib/dialogs.dart:214:      switch (choice) {
-lib/models.dart:3:enum DebtStatus { piutang, lunas, lancar, mendekati, telat }
-lib/models.dart:169:  DebtStatus status([DateTime? now]) {
+===== MODELS.DART =====
+     1	enum TxnType { utang, bayar }
+     2	
+     3	enum DebtStatus { piutang, lunas, lancar, mendekati, telat }
+     4	
+     5	DateTime dateOnly(DateTime d) => DateTime(d.year, d.month, d.day);
+     6	
+     7	class Customer {
+     8	  final int? id;
+     9	  final String name;
+    10	  final String phone;
+    11	  final String note;
+    12	
+    13	  /// Batas utang dalam rupiah. 0 berarti tanpa batas.
+    14	  final int creditLimit;
+    15	  final DateTime createdAt;
+    16	
+    17	  const Customer({
+    18	    this.id,
+    19	    required this.name,
+    20	    this.phone = '',
+    21	    this.note = '',
+    22	    this.creditLimit = 0,
+    23	    required this.createdAt,
+    24	  });
+    25	
+    26	  Customer copyWith({
+    27	    int? id,
+    28	    String? name,
+    29	    String? phone,
+    30	    String? note,
+    31	    int? creditLimit,
+    32	  }) {
+    33	    return Customer(
+    34	      id: id ?? this.id,
+    35	      name: name ?? this.name,
+    36	      phone: phone ?? this.phone,
+    37	      note: note ?? this.note,
+    38	      creditLimit: creditLimit ?? this.creditLimit,
+    39	      createdAt: createdAt,
+    40	    );
+    41	  }
+    42	
+    43	  Map<String, Object?> toMap() => {
+    44	        if (id != null) 'id': id,
+    45	        'name': name,
+    46	        'phone': phone,
+    47	        'note': note,
+    48	        'credit_limit': creditLimit,
+    49	        'created_at': createdAt.millisecondsSinceEpoch,
+    50	      };
+    51	
+    52	  factory Customer.fromMap(Map<String, Object?> m) => Customer(
+    53	        id: m['id'] as int?,
+    54	        name: m['name'] as String,
+    55	        phone: (m['phone'] as String?) ?? '',
+    56	        note: (m['note'] as String?) ?? '',
+    57	        creditLimit: (m['credit_limit'] as int?) ?? 0,
+    58	        createdAt: DateTime.fromMillisecondsSinceEpoch(m['created_at'] as int),
+    59	      );
+    60	}
+    61	
+    62	class Txn {
+    63	  final int? id;
+    64	  final int customerId;
+    65	  final TxnType type;
+    66	  final int amount;
+    67	  final String note;
+    68	  final DateTime date;
+    69	  final DateTime? dueDate;
+    70	
+    71	  const Txn({
+    72	    this.id,
+    73	    required this.customerId,
+    74	    required this.type,
+    75	    required this.amount,
+    76	    this.note = '',
+    77	    required this.date,
+    78	    this.dueDate,
+    79	  });
+    80	
+    81	  Map<String, Object?> toMap() => {
+    82	        if (id != null) 'id': id,
+    83	        'customer_id': customerId,
+    84	        'type': type.name,
+    85	        'amount': amount,
+    86	        'note': note,
+    87	        'date': date.millisecondsSinceEpoch,
+    88	        'due_date': dueDate?.millisecondsSinceEpoch,
+    89	      };
+    90	
+    91	  factory Txn.fromMap(Map<String, Object?> m) => Txn(
+    92	        id: m['id'] as int?,
+    93	        customerId: m['customer_id'] as int,
+    94	        type: TxnType.values.byName(m['type'] as String),
+    95	        amount: m['amount'] as int,
+    96	        note: (m['note'] as String?) ?? '',
+    97	        date: DateTime.fromMillisecondsSinceEpoch(m['date'] as int),
+    98	        dueDate: m['due_date'] == null
+    99	            ? null
+   100	            : DateTime.fromMillisecondsSinceEpoch(m['due_date'] as int),
+   101	      );
+   102	}
+   103	
+   104	/// Sisa utang = total utang dikurangi total pembayaran.
+   105	int computeBalance(List<Txn> txns) => txns.fold<int>(
+   106	      0,
+   107	      (sum, t) => sum + (t.type == TxnType.utang ? t.amount : -t.amount),
+   108	    );
+   109	
+   110	/// Jatuh tempo terdekat dari utang yang belum tertutup.
+   111	/// Pembayaran dialokasikan ke utang paling lama lebih dulu (FIFO).
+   112	DateTime? nextDueDate(List<Txn> txns) {
+   113	  final ordered = [...txns]..sort((a, b) {
+   114	    final byDate = a.date.compareTo(b.date);
+   115	    return byDate != 0 ? byDate : (a.id ?? 0).compareTo(b.id ?? 0);
+   116	  });
+   117	
+   118	  // Pembayaran dialokasikan secara kronologis ke utang tertua (FIFO).
+   119	  // Kelebihan pembayaran menjadi kredit untuk utang berikutnya.
+   120	  final outstanding = <MapEntry<Txn, int>>[];
+   121	  var credit = 0;
+   122	
+   123	  for (final t in ordered) {
+   124	    if (t.type == TxnType.utang) {
+   125	      final remaining = t.amount - credit;
+   126	      credit = remaining < 0 ? -remaining : 0;
+   127	      if (remaining > 0) {
+   128	        outstanding.add(MapEntry(t, remaining));
+   129	      }
+   130	    } else {
+   131	      var payment = t.amount;
+   132	      while (payment > 0 && outstanding.isNotEmpty) {
+   133	        final first = outstanding.removeAt(0);
+   134	        final left = first.value - payment;
+   135	        if (left > 0) {
+   136	          outstanding.insert(0, MapEntry(first.key, left));
+   137	          payment = 0;
+   138	        } else {
+   139	          payment = -left;
+   140	        }
+   141	      }
+   142	      credit += payment;
+   143	    }
+   144	  }
+   145	
+   146	  DateTime? earliest;
+   147	  for (final item in outstanding) {
+   148	    final due = item.key.dueDate;
+   149	    if (due != null && (earliest == null || due.isBefore(earliest))) {
+   150	      earliest = due;
+   151	    }
+   152	  }
+   153	  return earliest;
+   154	}
+   155	
+   156	class CustomerSummary {
+   157	  final Customer customer;
+   158	  final int balance;
+   159	  final DateTime? nextDue;
+   160	  final DateTime? lastActivity;
+   161	
+   162	  const CustomerSummary({
+   163	    required this.customer,
+   164	    required this.balance,
+   165	    this.nextDue,
+   166	    this.lastActivity,
+   167	  });
+   168	
+   169	  DebtStatus status([DateTime? now]) {
+   170	    if (balance < 0) return DebtStatus.piutang;
+   171	    if (balance == 0) return DebtStatus.lunas;
+   172	    final due = nextDue;
+   173	    if (due == null) return DebtStatus.lancar;
+   174	    final today = dateOnly(now ?? DateTime.now());
+   175	    final dueDay = dateOnly(due);
+   176	    if (dueDay.isBefore(today)) return DebtStatus.telat;
+   177	    if (dueDay.difference(today).inDays <= 3) return DebtStatus.mendekati;
+   178	    return DebtStatus.lancar;
+   179	  }
+   180	
+   181	  bool get overLimit =>
+   182	      customer.creditLimit > 0 && balance > customer.creditLimit;
+   183	}
+   184	
+   185	List<CustomerSummary> buildSummaries(
+   186	  List<Customer> customers,
+   187	  List<Txn> txns,
+   188	) {
+   189	  final byCustomer = <int, List<Txn>>{};
+   190	  for (final t in txns) {
+   191	    byCustomer.putIfAbsent(t.customerId, () => <Txn>[]).add(t);
+   192	  }
+   193	  return customers.map((c) {
+   194	    final list = byCustomer[c.id] ?? <Txn>[];
+   195	    return CustomerSummary(
+   196	      customer: c,
+   197	      balance: computeBalance(list),
+   198	      nextDue: nextDueDate(list),
+   199	      lastActivity: list.isEmpty
+   200	          ? null
+   201	          : list.map((t) => t.date).reduce((a, b) => a.isAfter(b) ? a : b),
+   202	    );
+   203	  }).toList();
+   204	}
+   205	
+   206	
+   207	/// Mengurutkan transaksi berdasarkan waktu, lalu ID untuk waktu yang sama.
+   208	List<Txn> _orderedTxns(List<Txn> txns) {
+   209	  return [...txns]..sort((a, b) {
+   210	    final byDate = a.date.compareTo(b.date);
+   211	    return byDate != 0 ? byDate : (a.id ?? 0).compareTo(b.id ?? 0);
+   212	  });
+   213	}
+   214	
+   215	/// Transaksi pada siklus utang yang masih aktif.
+   216	List<Txn> activeDebtCycle(List<Txn> txns) {
+   217	  final cycle = <Txn>[];
+   218	  var balance = 0;
+   219	
+   220	  for (final t in _orderedTxns(txns)) {
+   221	    cycle.add(t);
+   222	    balance += t.type == TxnType.utang ? t.amount : -t.amount;
+   223	
+   224	    if (balance == 0) {
+   225	      cycle.clear();
+   226	    }
+   227	  }
+   228	
+   229	  return cycle;
+   230	}
+   231	
+   232	/// Transaksi pada siklus terakhir yang sudah lunas.
+   233	List<Txn> latestClosedDebtCycle(List<Txn> txns) {
+   234	  final cycle = <Txn>[];
+   235	  List<Txn> latestClosed = [];
+   236	  var balance = 0;
+   237	
+   238	  for (final t in _orderedTxns(txns)) {
+   239	    cycle.add(t);
+   240	    balance += t.type == TxnType.utang ? t.amount : -t.amount;
+   241	
+   242	    if (balance == 0) {
+   243	      if (cycle.any((item) => item.type == TxnType.utang)) {
+   244	        latestClosed = List<Txn>.from(cycle);
+   245	      }
+   246	      cycle.clear();
+   247	    }
+   248	  }
+   249	
+   250	  return latestClosed;
+   251	}
+
+===== UTILITAS STATUS DAN PERHITUNGAN =====
+lib/utils.dart-16-  return '${value < 0 ? '-' : ''}Rp $buf';
+lib/utils.dart-17-}
+lib/utils.dart-18-
+lib/utils.dart-19-/// DateTime(2026, 11, 5) -> "5 Nov 2026"
+lib/utils.dart-20-String tglJam(DateTime d) {
+lib/utils.dart-21-  if (d.hour == 0 && d.minute == 0 && d.second == 0 && d.millisecond == 0) {
+lib/utils.dart-22-    return tgl(d);
+lib/utils.dart-23-  }
+lib/utils.dart-24-  String two(int n) => n.toString().padLeft(2, '0');
+lib/utils.dart-25-  return '${two(d.day)}-${two(d.month)}-${d.year} '
+lib/utils.dart-26-      '${two(d.hour)}:${two(d.minute)}:${two(d.second)}';
+lib/utils.dart-27-}
+lib/utils.dart-28-
+lib/utils.dart-29-String tgl(DateTime d) => '${d.day} ${_bulan[d.month - 1]} ${d.year}';
+lib/utils.dart-30-
+lib/utils.dart:31:String statusText(CustomerSummary s, [DateTime? now]) {
+lib/utils.dart-32-  final today = dateOnly(now ?? DateTime.now());
+lib/utils.dart-33-  switch (s.status(now)) {
+lib/utils.dart-34-    case DebtStatus.piutang:
+lib/utils.dart-35-      return 'Piutang pelanggan';
+lib/utils.dart-36-    case DebtStatus.lunas:
+lib/utils.dart-37-      return 'Lunas';
+lib/utils.dart-38-    case DebtStatus.telat:
+lib/utils.dart-39-      final days = today.difference(dateOnly(s.nextDue!)).inDays;
+lib/utils.dart-40-      return 'Telat $days hari';
+lib/utils.dart-41-    case DebtStatus.mendekati:
+lib/utils.dart-42-      final days = dateOnly(s.nextDue!).difference(today).inDays;
+lib/utils.dart-43-      return days == 0 ? 'Jatuh tempo hari ini' : 'Jatuh tempo $days hari lagi';
+lib/utils.dart-44-    case DebtStatus.lancar:
+lib/utils.dart-45-      return s.nextDue == null ? 'Utang berjalan' : 'Tempo ${tgl(s.nextDue!)}';
+lib/utils.dart-46-  }
+lib/utils.dart-47-}
+lib/utils.dart-48-
+lib/utils.dart-49-/// Ubah nomor lokal ke format internasional tanpa plus untuk wa.me.
+lib/utils.dart-50-/// "0812-3456-789" -> "628123456789". Mengembalikan null jika kosong.
+lib/utils.dart-51-String? normalizePhone(String raw) {
+lib/utils.dart-52-  final d = raw.replaceAll(RegExp(r'[^0-9]'), '');
+lib/utils.dart-53-  if (d.isEmpty) return null;
+lib/utils.dart-54-  if (d.startsWith('62')) return d;
+lib/utils.dart-55-  if (d.startsWith('0')) return '62${d.substring(1)}';
+lib/utils.dart-56-  if (d.startsWith('8')) return '62$d';
+lib/utils.dart-57-  return d;
+lib/utils.dart-58-}
+lib/utils.dart-59-
+lib/utils.dart-60-/// Tautan WhatsApp. Tanpa nomor, WhatsApp membiarkan pengguna memilih kontak.
+lib/utils.dart-61-Uri waUri(String phone, String text) {
+lib/utils.dart-62-  final n = normalizePhone(phone);
+lib/utils.dart-63-  final encoded = Uri.encodeComponent(text);
+lib/utils.dart-64-  return Uri.parse('https://wa.me/${n ?? ''}?text=$encoded');
+lib/utils.dart-65-}
+lib/utils.dart-66-
+lib/utils.dart-67-String _line(Txn t) {
+lib/utils.dart-68-  final sign = t.type == TxnType.utang ? '+' : '-';
+lib/utils.dart-69-  final label = t.type == TxnType.utang ? 'utang' : 'bayar';
+lib/utils.dart-70-  final note = t.note.trim().isEmpty ? '' : ' (${t.note.trim()})';
+lib/utils.dart-71-  return '${tglJam(t.date)}: $label $sign${rupiah(t.amount)}$note';
+lib/utils.dart-72-}
+lib/utils.dart-73-
+lib/utils.dart-74-List<Txn> _newestFirst(List<Txn> txns) =>
+lib/utils.dart-75-    [...txns]..sort((a, b) => b.date.compareTo(a.date));
+lib/utils.dart-76-
+lib/utils.dart-77-/// Pesan tagih yang sopan, siap kirim lewat WhatsApp.
+lib/utils.dart-78-String buildReminder({
+lib/utils.dart-79-  required String name,
+lib/utils.dart-80-  required int balance,
+lib/utils.dart-81-  DateTime? due,
+lib/utils.dart-82-  required List<Txn> txns,
+lib/utils.dart-83-  String shopName = '',
+lib/utils.dart-84-  String header = '',
+lib/utils.dart-85-  String footer = '',
+lib/utils.dart-86-}) {
+lib/utils.dart-87-  final b = StringBuffer();
+lib/utils.dart-88-
+lib/utils.dart-89-  if (header.trim().isNotEmpty) {
+lib/utils.dart-90-    b.writeln(header.trim());
+lib/utils.dart-91-    b.writeln('');
+lib/utils.dart-92-  }
+lib/utils.dart-93-  if (shopName.trim().isNotEmpty) {
+lib/utils.dart-94-    b.writeln('*${shopName.trim()}*');
+lib/utils.dart-95-  }
+lib/utils.dart-96-
+lib/utils.dart-97-  b
+lib/utils.dart-98-    ..writeln('Halo $name, mohon maaf mengganggu 🙏')
+lib/utils.dart-99-    ..writeln(
+lib/utils.dart-100-      'Ini pengingat ramah dari warung: sisa utang Anda saat ini '
+lib/utils.dart-101-      '*${rupiah(balance.abs())}*.',
+lib/utils.dart-102-    );
+lib/utils.dart-103-
+lib/utils.dart-104-  if (due != null) b.writeln('Jatuh tempo: ${tgl(due)}.');
+lib/utils.dart-105-
+lib/utils.dart-106-  final recent = _newestFirst(txns);
+lib/utils.dart-107-  if (recent.isNotEmpty) {
+lib/utils.dart-108-    b.writeln('\nRincian siklus tagihan aktif:');
+lib/utils.dart-109-    for (final t in recent) {
+lib/utils.dart-110-      b.writeln('- ${_line(t)}');
+lib/utils.dart-111-    }
+lib/utils.dart-112-  }
+lib/utils.dart-113-
+lib/utils.dart-114-  final closing = footer.trim();
+lib/utils.dart-115-  b.write(
+lib/utils.dart-116-    '\n${closing.isNotEmpty ? closing : 'Kalau sudah ada rezekinya, ditunggu ya. Terima kasih banyak!'}',
+lib/utils.dart-117-  );
+lib/utils.dart-118-  return b.toString();
+lib/utils.dart-119-}
+lib/utils.dart-120-
+lib/utils.dart-121-/// Pesan bukti pelunasan untuk satu siklus utang yang telah ditutup.
+lib/utils.dart-122-String buildSettlementReceipt({
+lib/utils.dart-123-  required String name,
+lib/utils.dart-124-  required List<Txn> txns,
+lib/utils.dart-125-  String shopName = '',
+lib/utils.dart-126-  String header = '',
+lib/utils.dart-127-  String footer = '',
+lib/utils.dart-128-}) {
+lib/utils.dart-129-  final sorted = [...txns]..sort((a, b) {
+lib/utils.dart-130-    final byDate = a.date.compareTo(b.date);
+lib/utils.dart-131-    return byDate != 0 ? byDate : (a.id ?? 0).compareTo(b.id ?? 0);
+--
+lib/models.dart-97-        date: DateTime.fromMillisecondsSinceEpoch(m['date'] as int),
+lib/models.dart-98-        dueDate: m['due_date'] == null
+lib/models.dart-99-            ? null
+lib/models.dart-100-            : DateTime.fromMillisecondsSinceEpoch(m['due_date'] as int),
+lib/models.dart-101-      );
+lib/models.dart-102-}
+lib/models.dart-103-
+lib/models.dart-104-/// Sisa utang = total utang dikurangi total pembayaran.
+lib/models.dart-105-int computeBalance(List<Txn> txns) => txns.fold<int>(
+lib/models.dart-106-      0,
+lib/models.dart-107-      (sum, t) => sum + (t.type == TxnType.utang ? t.amount : -t.amount),
+lib/models.dart-108-    );
+lib/models.dart-109-
+lib/models.dart-110-/// Jatuh tempo terdekat dari utang yang belum tertutup.
+lib/models.dart-111-/// Pembayaran dialokasikan ke utang paling lama lebih dulu (FIFO).
+lib/models.dart:112:DateTime? nextDueDate(List<Txn> txns) {
+lib/models.dart-113-  final ordered = [...txns]..sort((a, b) {
+lib/models.dart-114-    final byDate = a.date.compareTo(b.date);
+lib/models.dart-115-    return byDate != 0 ? byDate : (a.id ?? 0).compareTo(b.id ?? 0);
+lib/models.dart-116-  });
+lib/models.dart-117-
+lib/models.dart-118-  // Pembayaran dialokasikan secara kronologis ke utang tertua (FIFO).
+lib/models.dart-119-  // Kelebihan pembayaran menjadi kredit untuk utang berikutnya.
+lib/models.dart-120-  final outstanding = <MapEntry<Txn, int>>[];
+lib/models.dart-121-  var credit = 0;
+lib/models.dart-122-
+lib/models.dart-123-  for (final t in ordered) {
+lib/models.dart-124-    if (t.type == TxnType.utang) {
+lib/models.dart-125-      final remaining = t.amount - credit;
+lib/models.dart-126-      credit = remaining < 0 ? -remaining : 0;
+lib/models.dart-127-      if (remaining > 0) {
+lib/models.dart-128-        outstanding.add(MapEntry(t, remaining));
+lib/models.dart-129-      }
+lib/models.dart-130-    } else {
+lib/models.dart-131-      var payment = t.amount;
+lib/models.dart-132-      while (payment > 0 && outstanding.isNotEmpty) {
+lib/models.dart-133-        final first = outstanding.removeAt(0);
+lib/models.dart-134-        final left = first.value - payment;
+lib/models.dart-135-        if (left > 0) {
+lib/models.dart-136-          outstanding.insert(0, MapEntry(first.key, left));
+lib/models.dart-137-          payment = 0;
+lib/models.dart-138-        } else {
+lib/models.dart-139-          payment = -left;
+lib/models.dart-140-        }
+lib/models.dart-141-      }
+lib/models.dart-142-      credit += payment;
+lib/models.dart-143-    }
+lib/models.dart-144-  }
+lib/models.dart-145-
+lib/models.dart-146-  DateTime? earliest;
+lib/models.dart-147-  for (final item in outstanding) {
+lib/models.dart-148-    final due = item.key.dueDate;
+lib/models.dart-149-    if (due != null && (earliest == null || due.isBefore(earliest))) {
+lib/models.dart-150-      earliest = due;
+lib/models.dart-151-    }
+lib/models.dart-152-  }
+lib/models.dart-153-  return earliest;
+lib/models.dart-154-}
+lib/models.dart-155-
+lib/models.dart-156-class CustomerSummary {
+lib/models.dart-157-  final Customer customer;
+lib/models.dart-158-  final int balance;
+lib/models.dart-159-  final DateTime? nextDue;
+lib/models.dart-160-  final DateTime? lastActivity;
+lib/models.dart-161-
+lib/models.dart-162-  const CustomerSummary({
+lib/models.dart-163-    required this.customer,
+lib/models.dart-164-    required this.balance,
+lib/models.dart-165-    this.nextDue,
+lib/models.dart-166-    this.lastActivity,
+lib/models.dart-167-  });
+lib/models.dart-168-
+lib/models.dart-169-  DebtStatus status([DateTime? now]) {
+lib/models.dart-170-    if (balance < 0) return DebtStatus.piutang;
+lib/models.dart-171-    if (balance == 0) return DebtStatus.lunas;
+lib/models.dart-172-    final due = nextDue;
+lib/models.dart-173-    if (due == null) return DebtStatus.lancar;
+lib/models.dart-174-    final today = dateOnly(now ?? DateTime.now());
+lib/models.dart-175-    final dueDay = dateOnly(due);
+lib/models.dart-176-    if (dueDay.isBefore(today)) return DebtStatus.telat;
+lib/models.dart-177-    if (dueDay.difference(today).inDays <= 3) return DebtStatus.mendekati;
+lib/models.dart-178-    return DebtStatus.lancar;
+lib/models.dart-179-  }
+lib/models.dart-180-
+lib/models.dart-181-  bool get overLimit =>
+lib/models.dart-182-      customer.creditLimit > 0 && balance > customer.creditLimit;
+lib/models.dart-183-}
+lib/models.dart-184-
+lib/models.dart-185-List<CustomerSummary> buildSummaries(
+lib/models.dart-186-  List<Customer> customers,
+lib/models.dart-187-  List<Txn> txns,
+lib/models.dart-188-) {
+lib/models.dart-189-  final byCustomer = <int, List<Txn>>{};
+lib/models.dart-190-  for (final t in txns) {
+lib/models.dart-191-    byCustomer.putIfAbsent(t.customerId, () => <Txn>[]).add(t);
+lib/models.dart-192-  }
+lib/models.dart-193-  return customers.map((c) {
+lib/models.dart-194-    final list = byCustomer[c.id] ?? <Txn>[];
+lib/models.dart-195-    return CustomerSummary(
+lib/models.dart-196-      customer: c,
+lib/models.dart-197-      balance: computeBalance(list),
+lib/models.dart:198:      nextDue: nextDueDate(list),
+lib/models.dart-199-      lastActivity: list.isEmpty
+lib/models.dart-200-          ? null
+lib/models.dart-201-          : list.map((t) => t.date).reduce((a, b) => a.isAfter(b) ? a : b),
+lib/models.dart-202-    );
+lib/models.dart-203-  }).toList();
+lib/models.dart-204-}
+lib/models.dart-205-
+lib/models.dart-206-
+lib/models.dart-207-/// Mengurutkan transaksi berdasarkan waktu, lalu ID untuk waktu yang sama.
+lib/models.dart-208-List<Txn> _orderedTxns(List<Txn> txns) {
+lib/models.dart-209-  return [...txns]..sort((a, b) {
+lib/models.dart-210-    final byDate = a.date.compareTo(b.date);
+lib/models.dart-211-    return byDate != 0 ? byDate : (a.id ?? 0).compareTo(b.id ?? 0);
+lib/models.dart-212-  });
+lib/models.dart-213-}
+lib/models.dart-214-
+lib/models.dart-215-/// Transaksi pada siklus utang yang masih aktif.
+lib/models.dart:216:List<Txn> activeDebtCycle(List<Txn> txns) {
+lib/models.dart-217-  final cycle = <Txn>[];
+lib/models.dart-218-  var balance = 0;
+lib/models.dart-219-
+lib/models.dart-220-  for (final t in _orderedTxns(txns)) {
+lib/models.dart-221-    cycle.add(t);
+lib/models.dart-222-    balance += t.type == TxnType.utang ? t.amount : -t.amount;
+lib/models.dart-223-
+lib/models.dart-224-    if (balance == 0) {
+lib/models.dart-225-      cycle.clear();
+lib/models.dart-226-    }
+lib/models.dart-227-  }
+lib/models.dart-228-
+lib/models.dart-229-  return cycle;
+lib/models.dart-230-}
+lib/models.dart-231-
+lib/models.dart-232-/// Transaksi pada siklus terakhir yang sudah lunas.
+lib/models.dart:233:List<Txn> latestClosedDebtCycle(List<Txn> txns) {
+lib/models.dart-234-  final cycle = <Txn>[];
+lib/models.dart-235-  List<Txn> latestClosed = [];
+lib/models.dart-236-  var balance = 0;
+lib/models.dart-237-
+lib/models.dart-238-  for (final t in _orderedTxns(txns)) {
+lib/models.dart-239-    cycle.add(t);
+lib/models.dart-240-    balance += t.type == TxnType.utang ? t.amount : -t.amount;
+lib/models.dart-241-
+lib/models.dart-242-    if (balance == 0) {
+lib/models.dart-243-      if (cycle.any((item) => item.type == TxnType.utang)) {
+lib/models.dart-244-        latestClosed = List<Txn>.from(cycle);
+lib/models.dart-245-      }
+lib/models.dart-246-      cycle.clear();
+lib/models.dart-247-    }
+lib/models.dart-248-  }
+lib/models.dart-249-
+lib/models.dart-250-  return latestClosed;
+lib/models.dart-251-}
+
+===== SEMUA PERHITUNGAN SALDO =====
+lib/dialogs.dart:267:        _isDebt && limit > 0 && widget.balance + _value > limit;
+lib/dialogs.dart:278:            if (widget.balance != 0)
+lib/dialogs.dart:301:            if (!_isDebt && widget.balance > 0)
+lib/models.dart:112:DateTime? nextDueDate(List<Txn> txns) {
 lib/models.dart:170:    if (balance < 0) return DebtStatus.piutang;
 lib/models.dart:171:    if (balance == 0) return DebtStatus.lunas;
-lib/models.dart:173:    if (due == null) return DebtStatus.lancar;
-lib/models.dart:176:    if (dueDay.isBefore(today)) return DebtStatus.telat;
-lib/models.dart:177:    if (dueDay.difference(today).inDays <= 3) return DebtStatus.mendekati;
-lib/models.dart:178:    return DebtStatus.lancar;
-lib/screens/customer_screen.dart:261:              switch (v) {
-lib/screens/customer_screen.dart:338:                    status == DebtStatus.piutang
-lib/screens/customer_screen.dart:348:                      color: status == DebtStatus.lunas ? null : color,
-lib/screens/home_screen.dart:173:        _items.where((s) => s.status() == DebtStatus.telat).length;
-lib/screens/home_screen.dart:175:        _items.where((s) => s.status() == DebtStatus.mendekati).length;
-lib/screens/home_screen.dart:372:            color: status == DebtStatus.lunas ? null : color,
-lib/screens/home_screen.dart:378:          if (status == DebtStatus.mendekati ||
-test/utils_test.dart:75:    expect(s(0, null).status(now), DebtStatus.lunas);
-test/utils_test.dart:76:    expect(s(5000, null).status(now), DebtStatus.lancar);
-test/utils_test.dart:77:    expect(s(5000, DateTime(2026, 11, 12)).status(now), DebtStatus.telat);
-test/utils_test.dart:78:    expect(s(5000, DateTime(2026, 11, 13)).status(now), DebtStatus.mendekati);
-test/utils_test.dart:79:    expect(s(5000, DateTime(2026, 11, 16)).status(now), DebtStatus.mendekati);
-test/utils_test.dart:80:    expect(s(5000, DateTime(2026, 11, 20)).status(now), DebtStatus.lancar);
-
-===== STATUS STYLE =====
-     1	import 'package:flutter/material.dart';
-     2	
-     3	import 'models.dart';
-     4	
-     5	const kHijau = Color(0xFF2E7D32);
-     6	const kKuning = Color(0xFFF9A825);
-     7	const kMerah = Color(0xFFC62828);
-     8	const kAbu = Color(0xFF757575);
-     9	const kBiru = Color(0xFF1565C0);
-    10	
-    11	Color statusColor(DebtStatus s) {
-    12	  switch (s) {
-    13	    case DebtStatus.piutang:
-    14	      return kBiru;
-    15	    case DebtStatus.lunas:
-    16	      return kAbu;
-    17	    case DebtStatus.lancar:
-    18	      return kHijau;
-    19	    case DebtStatus.mendekati:
-    20	      return kKuning;
-    21	    case DebtStatus.telat:
-    22	      return kMerah;
-    23	  }
-    24	}
-
-===== TEST MODELS =====
-test/utils_test.dart-49-      utang(10000, DateTime(2026, 1, 1), due: DateTime(2026, 1, 10)),
-test/utils_test.dart-50-      utang(20000, DateTime(2026, 1, 5), due: DateTime(2026, 1, 20)),
-test/utils_test.dart-51-      bayar(10000, DateTime(2026, 1, 6)),
-test/utils_test.dart-52-    ];
-test/utils_test.dart-53-    // Utang pertama sudah lunas, tinggal yang tempo 20 Jan.
+lib/models.dart:182:      customer.creditLimit > 0 && balance > customer.creditLimit;
+lib/models.dart:198:      nextDue: nextDueDate(list),
+lib/models.dart:216:List<Txn> activeDebtCycle(List<Txn> txns) {
+lib/models.dart:218:  var balance = 0;
+lib/models.dart:222:    balance += t.type == TxnType.utang ? t.amount : -t.amount;
+lib/models.dart:224:    if (balance == 0) {
+lib/models.dart:233:List<Txn> latestClosedDebtCycle(List<Txn> txns) {
+lib/models.dart:236:  var balance = 0;
+lib/models.dart:240:    balance += t.type == TxnType.utang ? t.amount : -t.amount;
+lib/models.dart:242:    if (balance == 0) {
+lib/screens/customer_screen.dart:81:    final cycle = latestClosedDebtCycle(_txns);
+lib/screens/customer_screen.dart:146:    final balance = computeBalance(_txns);
+lib/screens/customer_screen.dart:147:    if (balance <= 0) {
+lib/screens/customer_screen.dart:153:    final cycle = activeDebtCycle(_txns);
+lib/screens/customer_screen.dart:157:      due: nextDueDate(cycle),
+lib/screens/customer_screen.dart:191:        settlement ? latestClosedDebtCycle(_txns) : List<Txn>.from(_txns);
+lib/screens/customer_screen.dart:248:      nextDue: nextDueDate(_txns),
+lib/screens/customer_screen.dart:286:              if (latestClosedDebtCycle(_txns).isNotEmpty)
+lib/screens/customer_screen.dart:392:                  onPressed: summary.balance > 0
+lib/screens/customer_screen.dart:401:          if (summary.balance > 0) ...[
+lib/screens/home_screen.dart:47:    final balance = computeBalance(txns);
+lib/screens/home_screen.dart:48:    if (balance <= 0) {
+lib/screens/home_screen.dart:57:    final cycle = activeDebtCycle(txns);
+lib/screens/home_screen.dart:62:      due: nextDueDate(cycle),
+lib/screens/home_screen.dart:134:    var balance = 0;
+lib/screens/home_screen.dart:137:      balance = picked.balance;
+lib/screens/home_screen.dart:169:        _items.fold<int>(0, (sum, s) => sum + (s.balance > 0 ? s.balance : 0));
+lib/screens/home_screen.dart:171:        _items.fold<int>(0, (sum, s) => sum + (s.balance < 0 ? -s.balance : 0));
+lib/screens/home_screen.dart:379:              summary.balance > 0)
+lib/screens/receipt_image_screen.dart:219:                              widget.balance < 0
+lib/screens/receipt_image_screen.dart:281:                              widget.balance < 0
+lib/screens/receipt_image_screen.dart:283:                                  : widget.balance == 0
 test/utils_test.dart:54:    expect(nextDueDate(txns), DateTime(2026, 1, 20));
-test/utils_test.dart-55-  });
-test/utils_test.dart-56-
-test/utils_test.dart-57-  test('tanpa tempo atau sudah lunas -> tidak ada jatuh tempo', () {
 test/utils_test.dart:58:    expect(nextDueDate([utang(1000, DateTime(2026, 1, 1))]), isNull);
-test/utils_test.dart-59-    expect(
 test/utils_test.dart:60:      nextDueDate([
-test/utils_test.dart-61-        utang(1000, DateTime(2026, 1, 1), due: DateTime(2026, 1, 10)),
-test/utils_test.dart-62-        bayar(1000, DateTime(2026, 1, 2)),
-test/utils_test.dart-63-      ]),
-test/utils_test.dart-64-      isNull,
-test/utils_test.dart-65-    );
-test/utils_test.dart-66-  });
-test/utils_test.dart-67-
-test/utils_test.dart-68-  test('status pelanggan', () {
-test/utils_test.dart-69-    final c = Customer(id: 1, name: 'Bu Ani', createdAt: DateTime(2026, 1, 1));
-test/utils_test.dart-70-    final now = DateTime(2026, 11, 13, 9);
-test/utils_test.dart-71-
-test/utils_test.dart-72-    CustomerSummary s(int balance, DateTime? due) =>
-test/utils_test.dart-73-        CustomerSummary(customer: c, balance: balance, nextDue: due);
-test/utils_test.dart-74-
-test/utils_test.dart:75:    expect(s(0, null).status(now), DebtStatus.lunas);
-test/utils_test.dart:76:    expect(s(5000, null).status(now), DebtStatus.lancar);
-test/utils_test.dart:77:    expect(s(5000, DateTime(2026, 11, 12)).status(now), DebtStatus.telat);
-test/utils_test.dart:78:    expect(s(5000, DateTime(2026, 11, 13)).status(now), DebtStatus.mendekati);
-test/utils_test.dart:79:    expect(s(5000, DateTime(2026, 11, 16)).status(now), DebtStatus.mendekati);
-test/utils_test.dart:80:    expect(s(5000, DateTime(2026, 11, 20)).status(now), DebtStatus.lancar);
-test/utils_test.dart-81-    expect(statusText(s(5000, DateTime(2026, 11, 10)), now), 'Telat 3 hari');
-test/utils_test.dart-82-  });
-test/utils_test.dart-83-
-test/utils_test.dart-84-  test('pesan tagih memuat nama dan nominal', () {
-test/utils_test.dart-85-    final msg = buildReminder(
-test/utils_test.dart-86-      name: 'Pak Budi',
-test/utils_test.dart-87-      balance: 45000,
-test/utils_test.dart-88-      due: DateTime(2026, 11, 20),
-test/utils_test.dart-89-      txns: [utang(45000, DateTime(2026, 11, 1))],
-test/utils_test.dart-90-    );
-test/utils_test.dart-91-    expect(msg, contains('Pak Budi'));
-test/utils_test.dart-92-    expect(msg, contains('Rp 45.000'));
 
-===== PATCH CHECK =====
+===== TEST YANG SUDAH ADA =====
+     1	import 'package:flutter_test/flutter_test.dart';
+     2	
+     3	import 'package:buku_utang_warung/models.dart';
+     4	import 'package:buku_utang_warung/utils.dart';
+     5	
+     6	Txn utang(int amount, DateTime date, {DateTime? due}) => Txn(
+     7	      customerId: 1,
+     8	      type: TxnType.utang,
+     9	      amount: amount,
+    10	      date: date,
+    11	      dueDate: due,
+    12	    );
+    13	
+    14	Txn bayar(int amount, DateTime date) =>
+    15	    Txn(customerId: 1, type: TxnType.bayar, amount: amount, date: date);
+    16	
+    17	void main() {
+    18	  test('rupiah memakai pemisah titik', () {
+    19	    expect(rupiah(0), 'Rp 0');
+    20	    expect(rupiah(500), 'Rp 500');
+    21	    expect(rupiah(15000), 'Rp 15.000');
+    22	    expect(rupiah(1250000), 'Rp 1.250.000');
+    23	    expect(rupiah(-2000), '-Rp 2.000');
+    24	  });
+    25	
+    26	  test('tgl memakai nama bulan Indonesia', () {
+    27	    expect(tgl(DateTime(2026, 11, 5)), '5 Nov 2026');
+    28	    expect(tgl(DateTime(2026, 8, 17)), '17 Agu 2026');
+    29	  });
+    30	
+    31	  test('normalizePhone ke format internasional', () {
+    32	    expect(normalizePhone('0812-3456-789'), '628123456789');
+    33	    expect(normalizePhone('+62 812 3456 789'), '628123456789');
+    34	    expect(normalizePhone('8123456789'), '628123456789');
+    35	    expect(normalizePhone(''), isNull);
+    36	  });
+    37	
+    38	  test('saldo = utang dikurangi bayar', () {
+    39	    final txns = [
+    40	      utang(10000, DateTime(2026, 1, 1)),
+    41	      utang(20000, DateTime(2026, 1, 5)),
+    42	      bayar(5000, DateTime(2026, 1, 6)),
+    43	    ];
+    44	    expect(computeBalance(txns), 25000);
+    45	  });
+    46	
+    47	  test('jatuh tempo dihitung dengan alokasi bayar ke utang terlama', () {
+    48	    final txns = [
+    49	      utang(10000, DateTime(2026, 1, 1), due: DateTime(2026, 1, 10)),
+    50	      utang(20000, DateTime(2026, 1, 5), due: DateTime(2026, 1, 20)),
+    51	      bayar(10000, DateTime(2026, 1, 6)),
+    52	    ];
+    53	    // Utang pertama sudah lunas, tinggal yang tempo 20 Jan.
+    54	    expect(nextDueDate(txns), DateTime(2026, 1, 20));
+    55	  });
+    56	
+    57	  test('tanpa tempo atau sudah lunas -> tidak ada jatuh tempo', () {
+    58	    expect(nextDueDate([utang(1000, DateTime(2026, 1, 1))]), isNull);
+    59	    expect(
+    60	      nextDueDate([
+    61	        utang(1000, DateTime(2026, 1, 1), due: DateTime(2026, 1, 10)),
+    62	        bayar(1000, DateTime(2026, 1, 2)),
+    63	      ]),
+    64	      isNull,
+    65	    );
+    66	  });
+    67	
+    68	  test('status pelanggan', () {
+    69	    final c = Customer(id: 1, name: 'Bu Ani', createdAt: DateTime(2026, 1, 1));
+    70	    final now = DateTime(2026, 11, 13, 9);
+    71	
+    72	    CustomerSummary s(int balance, DateTime? due) =>
+    73	        CustomerSummary(customer: c, balance: balance, nextDue: due);
+    74	
+    75	    expect(s(0, null).status(now), DebtStatus.lunas);
+    76	    expect(s(5000, null).status(now), DebtStatus.lancar);
+    77	    expect(s(5000, DateTime(2026, 11, 12)).status(now), DebtStatus.telat);
+    78	    expect(s(5000, DateTime(2026, 11, 13)).status(now), DebtStatus.mendekati);
+    79	    expect(s(5000, DateTime(2026, 11, 16)).status(now), DebtStatus.mendekati);
+    80	    expect(s(5000, DateTime(2026, 11, 20)).status(now), DebtStatus.lancar);
+    81	    expect(statusText(s(5000, DateTime(2026, 11, 10)), now), 'Telat 3 hari');
+    82	  });
+    83	
+    84	  test('pesan tagih memuat nama dan nominal', () {
+    85	    final msg = buildReminder(
+    86	      name: 'Pak Budi',
+    87	      balance: 45000,
+    88	      due: DateTime(2026, 11, 20),
+    89	      txns: [utang(45000, DateTime(2026, 11, 1))],
+    90	    );
+    91	    expect(msg, contains('Pak Budi'));
+    92	    expect(msg, contains('Rp 45.000'));
+    93	    expect(msg, contains('20 Nov 2026'));
+    94	  });
+    95	
+    96	  test('waUri menyandikan teks', () {
+    97	    final uri = waUri('08123456789', 'Halo dunia');
+    98	    expect(uri.host, 'wa.me');
+    99	    expect(uri.path, '/628123456789');
+   100	    expect(uri.queryParameters['text'], 'Halo dunia');
+   101	  });
+   102	}
+
+===== TEST LAIN =====
+test/utils_test.dart
+test/backup_crypto_test.dart
+test/restore_database_test.dart
+
+===== STATUS GIT =====
+ M .github/workflows/build-apk.yml
+ M lib/models.dart
+ M lib/screens/customer_screen.dart
+ M lib/screens/home_screen.dart
+ M lib/screens/settings_screen.dart
+ M lib/services/backup_status.dart
+ M lib/services/google_drive_service.dart
+ M lib/status_style.dart
+ M lib/utils.dart
+ M lib/widgets/backup_indicator.dart
+ M pubspec.yaml
+?? add_backup_indicator.sh
+?? backup_app_lock_integrity_20261116_210514/
+?? backup_app_lock_recovery_20261116_210009/
+?? backup_app_lock_safe_20261116_205501/
+?? backup_app_lock_safe_20261116_205635/
+?? backup_app_lock_safe_20261116_205712/
+?? backup_app_lock_storage_20261116_211528/
+?? backup_auto_backup_dependencies_20261116_234527/
+?? backup_backup_status_race_20261116_231910/
+?? backup_before_revert_lightweight_20261115_133121/
+?? backup_cloud_reconnect_20261115_133235/
+?? backup_diagnostik_google_20261115_111942/
+?? backup_fix_google_import_20261115_104148/
+?? backup_google_lightweight_restore_20261116_233447/
+?? backup_google_login_20261114_185251/
+?? backup_google_restore_20261115_132224/
+?? backup_google_session_20261115_102650/
+?? backup_google_session_fix_20261115_123805/
+?? backup_google_session_fix_20261115_124655/
+?? backup_guard_whatsapp_20261116_230413/
+?? backup_guard_whatsapp_20261116_230532/
+?? backup_guard_whatsapp_v2_20261116_230720/
+?? backup_listener_google_20261115_125040/
+?? backup_pengaturan_warung_20261116_222928/
+?? backup_png_filename_20261117_061635/
+?? backup_remove_app_lock_20261116_213512/
+?? backup_remove_app_lock_20261116_213908/
+?? backup_saldo_piutang_20261116_221958/
+?? backup_sebelum_cloud_ui_20261114_225058/
+?? backup_sebelum_cloud_ui_20261114_225846/
+?? backup_sebelum_fix_sqlite_20261114_231957/
+?? backup_sebelum_google_20261114_184301/
+?? backup_sebelum_integrasi_drive_20261114_221515/
+?? backup_sebelum_pin_ffi_20261114_230953/
+?? backup_sebelum_pin_shared_preferences_20261115_124930/
+?? backup_sebelum_settings_20261114_164203/
+?? backup_sebelum_test_restore_20261114_230544/
+?? backup_sebelum_update_siklus/
+?? backup_sebelum_whatsapp_gambar_20261116_221203/
+?? backup_settings_warung_ui_20261116_223241/
+?? backup_status_google_20261114_192221/
+?? backup_switch_png_20261117_062447/
+?? backup_whatsapp_newline_20261116_225847/
+?? fix_diag.sh
+?? fix_google_session.sh
+?? fix_ux.sh
+?? lib/screens/receipt_image_screen.dart
+?? lib/services/shop_message_settings.dart
+?? patch_google_session.py
+?? patchv3.py
+?? tambah_fitur.sh
+
+===== PEMERIKSAAN PATCH =====
