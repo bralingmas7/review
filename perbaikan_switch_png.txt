@@ -1,0 +1,40 @@
+===== PERBAIKAN SWITCH MENU PNG =====
+Tue Nov 17 06:24:47 WIB 2026
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(c.name),
+        actions: [
+          PopupMenuButton<String>(
+            onSelected: (v) {
+              switch (v) {
+                case 'edit':
+                  _edit();
+                  break;
+                case 'recap':
+                  _copyRecap();
+                  break;
+                case 'recap_png':
+                  _openPng(settlement: false);
+                  break;
+                case 'settlement_png':
+                  _openPng(settlement: true);
+                  break;
+                case 'delete':
+                  _deleteCustomer();
+                  break;
+              }
+            },
+            itemBuilder: (_) => [
+              const PopupMenuItem(value: 'edit', child: Text('Ubah data')),
+              const PopupMenuItem(value: 'recap', child: Text('Salin rekap')),
+              const PopupMenuItem(
+                value: 'recap_png',
+                child: Text('Simpan rekap sebagai PNG'),
+              ),
+              if (latestClosedDebtCycle(_txns).isNotEmpty)
+                const PopupMenuItem(
+                  value: 'settlement_png',
+                  child: Text('Bukti pelunasan PNG'),
+                ),
+
+EXIT DIFF CHECK: 0
