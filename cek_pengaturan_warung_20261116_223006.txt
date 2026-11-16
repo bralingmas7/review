@@ -1,0 +1,92 @@
+===== SETTINGS SCREEN =====
+===== SHOP SETTINGS SERVICE =====
+import 'package:shared_preferences/shared_preferences.dart';
+
+class ShopMessageSettings {
+  const ShopMessageSettings({
+    this.shopName = '',
+    this.header = '',
+    this.footer = '',
+  });
+
+  final String shopName;
+  final String header;
+  final String footer;
+
+  static const _nameKey = 'shop_message_name';
+  static const _headerKey = 'shop_message_header';
+  static const _footerKey = 'shop_message_footer';
+
+  static Future<ShopMessageSettings> load() async {
+    final prefs = SharedPreferencesAsync();
+    return ShopMessageSettings(
+      shopName: await prefs.getString(_nameKey) ?? '',
+      header: await prefs.getString(_headerKey) ?? '',
+      footer: await prefs.getString(_footerKey) ?? '',
+    );
+  }
+
+  Future<void> save() async {
+    final prefs = SharedPreferencesAsync();
+    await prefs.setString(_nameKey, shopName.trim());
+    await prefs.setString(_headerKey, header.trim());
+    await prefs.setString(_footerKey, footer.trim());
+  }
+}
+===== UTILS MESSAGE FUNCTIONS =====
+78:String buildReminder({
+83:  String shopName = '',
+84:  String header = '',
+85:  String footer = '',
+89:  if (header.trim().isNotEmpty) {
+90:    b.writeln(header.trim());
+93:  if (shopName.trim().isNotEmpty) {
+94:    b.writeln('*${shopName.trim()}*');
+114:  final closing = footer.trim();
+122:String buildSettlementReceipt({
+125:  String shopName = '',
+126:  String header = '',
+127:  String footer = '',
+143:  if (header.trim().isNotEmpty) {
+144:    b.writeln(header.trim());
+147:  if (shopName.trim().isNotEmpty) {
+148:    b.writeln('*${shopName.trim()}*');
+152:    ..writeln('BUKTI PELUNASAN')
+167:    footer.trim().isNotEmpty
+168:        ? footer.trim()
+===== CALL SITES =====
+lib/screens/customer_screen.dart:106:    final messageSettings = await ShopMessageSettings.load();
+lib/screens/customer_screen.dart:107:    final msg = buildSettlementReceipt(
+lib/screens/customer_screen.dart:145:    final messageSettings = await ShopMessageSettings.load();
+lib/screens/customer_screen.dart:147:    final msg = buildReminder(
+lib/screens/home_screen.dart:46:    final messageSettings = await ShopMessageSettings.load();
+lib/screens/home_screen.dart:47:    final msg = buildReminder(
+===== SETTINGS DIFF =====
+diff --git a/lib/screens/settings_screen.dart b/lib/screens/settings_screen.dart
+index 584f9f0..230801c 100644
+--- a/lib/screens/settings_screen.dart
++++ b/lib/screens/settings_screen.dart
+@@ -149,6 +149,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
+     setState(() => _busy = true);
+ 
+     try {
++      final revision = BackupStatus.instance.revision;
+       final data = await AppDb.instance.exportBackup();
+       final json = const JsonEncoder.withIndent('  ').convert(data);
+       final now = DateTime.now();
+@@ -166,6 +167,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
+       );
+ 
+       if (result != null) {
++        await BackupStatus.instance.markLocalBackedUp(revision);
+         _message('File backup berhasil disimpan.');
+       }
+     } catch (e) {
+@@ -540,6 +542,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
+             ),
+           ),
+           const SizedBox(height: 12),
++          const SizedBox(height: 12),
+           Card(
+             child: Padding(
+               padding: const EdgeInsets.all(16),
