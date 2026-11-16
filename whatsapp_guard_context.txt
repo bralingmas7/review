@@ -1,0 +1,144 @@
+===== CUSTOMER _tagih =====
+138-    if (!ok) return;
+139-    await AppDb.instance.deleteTxn(t.id!);
+140-    await _load();
+141-  }
+142-
+143:  Future<void> _tagih() async {
+144-    final c = _customer!;
+145-    final messageSettings = await ShopMessageSettings.load();
+146-    final cycle = activeDebtCycle(_txns);
+147-    final msg = buildReminder(
+148-      name: c.name,
+149-      balance: computeBalance(_txns),
+150-      due: nextDueDate(cycle),
+151-      txns: cycle,
+152-      shopName: messageSettings.shopName,
+153-      header: messageSettings.header,
+154-      footer: messageSettings.footer,
+155-    );
+156-    bool ok;
+157-    try {
+158-      ok = await launchUrl(waUri(c.phone, msg),
+159-          mode: LaunchMode.externalApplication);
+160-    } catch (_) {
+161-      ok = false;
+162-    }
+163-    if (!ok && mounted) {
+164-      await Clipboard.setData(ClipboardData(text: msg));
+165-      _snack('WhatsApp tidak bisa dibuka. Pesan disalin, tempel manual ya.');
+166-    }
+167-  }
+168-
+169-  Future<void> _copyRecap() async {
+170-    final c = _customer!;
+171-    await Clipboard.setData(ClipboardData(
+172-      text: buildRecap(
+173-        name: c.name,
+174-        balance: computeBalance(_txns),
+175-        txns: _txns,
+176-      ),
+177-    ));
+178-    if (mounted) _snack('Rekap disalin');
+
+===== HOME _tagihCepat =====
+37-      MaterialPageRoute(builder: (_) => const SettingsScreen()),
+38-    );
+39-    await _load();
+40-  }
+41-
+42:  Future<void> _tagihCepat(CustomerSummary s) async {
+43-    final c = s.customer;
+44-    final txns = await AppDb.instance.txnsFor(c.id!);
+45-    final cycle = activeDebtCycle(txns);
+46-    final messageSettings = await ShopMessageSettings.load();
+47-    final msg = buildReminder(
+48-      name: c.name,
+49-      balance: computeBalance(txns),
+50-      due: nextDueDate(cycle),
+51-      txns: cycle,
+52-      shopName: messageSettings.shopName,
+53-      header: messageSettings.header,
+54-      footer: messageSettings.footer,
+55-    );
+56-
+57-    bool ok;
+58-    try {
+59-      ok = await launchUrl(
+60-        waUri(c.phone, msg),
+61-        mode: LaunchMode.externalApplication,
+62-      );
+63-    } catch (_) {
+64-      ok = false;
+65-    }
+66-
+67-    if (!ok && mounted) {
+68-      await Clipboard.setData(ClipboardData(text: msg));
+69-      ScaffoldMessenger.of(context).showSnackBar(
+70-        const SnackBar(
+71-          content: Text(
+72-            'WhatsApp tidak bisa dibuka. Pesan disalin, tempel manual ya.',
+73-          ),
+74-        ),
+75-      );
+76-    }
+77-  }
+78-
+79-  Future<void> _load() async {
+80-    final db = AppDb.instance;
+81-    final customers = await db.customers();
+82-    await BackupStatus.instance.load(hasData: customers.isNotEmpty);
+
+===== STATUS =====
+ M lib/models.dart
+ M lib/screens/customer_screen.dart
+ M lib/screens/home_screen.dart
+ M lib/screens/settings_screen.dart
+ M lib/services/backup_status.dart
+ M lib/status_style.dart
+ M lib/utils.dart
+ M lib/widgets/backup_indicator.dart
+?? add_backup_indicator.sh
+?? backup_app_lock_integrity_20261116_210514/
+?? backup_app_lock_recovery_20261116_210009/
+?? backup_app_lock_safe_20261116_205501/
+?? backup_app_lock_safe_20261116_205635/
+?? backup_app_lock_safe_20261116_205712/
+?? backup_app_lock_storage_20261116_211528/
+?? backup_before_revert_lightweight_20261115_133121/
+?? backup_cloud_reconnect_20261115_133235/
+?? backup_diagnostik_google_20261115_111942/
+?? backup_fix_google_import_20261115_104148/
+?? backup_google_login_20261114_185251/
+?? backup_google_restore_20261115_132224/
+?? backup_google_session_20261115_102650/
+?? backup_google_session_fix_20261115_123805/
+?? backup_google_session_fix_20261115_124655/
+?? backup_guard_whatsapp_20261116_230413/
+?? backup_guard_whatsapp_20261116_230532/
+?? backup_listener_google_20261115_125040/
+?? backup_pengaturan_warung_20261116_222928/
+?? backup_remove_app_lock_20261116_213512/
+?? backup_remove_app_lock_20261116_213908/
+?? backup_saldo_piutang_20261116_221958/
+?? backup_sebelum_cloud_ui_20261114_225058/
+?? backup_sebelum_cloud_ui_20261114_225846/
+?? backup_sebelum_fix_sqlite_20261114_231957/
+?? backup_sebelum_google_20261114_184301/
+?? backup_sebelum_integrasi_drive_20261114_221515/
+?? backup_sebelum_pin_ffi_20261114_230953/
+?? backup_sebelum_pin_shared_preferences_20261115_124930/
+?? backup_sebelum_settings_20261114_164203/
+?? backup_sebelum_test_restore_20261114_230544/
+?? backup_sebelum_update_siklus/
+?? backup_sebelum_whatsapp_gambar_20261116_221203/
+?? backup_settings_warung_ui_20261116_223241/
+?? backup_status_google_20261114_192221/
+?? backup_whatsapp_newline_20261116_225847/
+?? fix_diag.sh
+?? fix_google_session.sh
+?? fix_ux.sh
+?? lib/services/shop_message_settings.dart
+?? patch_google_session.py
+?? patchv3.py
+?? tambah_fitur.sh
