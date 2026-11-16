@@ -1,0 +1,165 @@
+===== PEMERIKSAAN NEWLINE =====
+108:    b.writeln('\nRincian siklus tagihan aktif:');
+116:    '\n${closing.isNotEmpty ? closing : 'Kalau sudah ada rezekinya, ditunggu ya. Terima kasih banyak!'}',
+===== DIFF CHECK =====
+===== DIFF UTILS =====
+diff --git a/lib/utils.dart b/lib/utils.dart
+index d7e9613..054621f 100644
+--- a/lib/utils.dart
++++ b/lib/utils.dart
+@@ -31,6 +31,8 @@ String tgl(DateTime d) => '${d.day} ${_bulan[d.month - 1]} ${d.year}';
+ String statusText(CustomerSummary s, [DateTime? now]) {
+   final today = dateOnly(now ?? DateTime.now());
+   switch (s.status(now)) {
++    case DebtStatus.piutang:
++      return 'Piutang pelanggan';
+     case DebtStatus.lunas:
+       return 'Lunas';
+     case DebtStatus.telat:
+@@ -78,20 +80,41 @@ String buildReminder({
+   required int balance,
+   DateTime? due,
+   required List<Txn> txns,
++  String shopName = '',
++  String header = '',
++  String footer = '',
+ }) {
+-  final b = StringBuffer()
++  final b = StringBuffer();
++
++  if (header.trim().isNotEmpty) {
++    b.writeln(header.trim());
++    b.writeln('');
++  }
++  if (shopName.trim().isNotEmpty) {
++    b.writeln('*${shopName.trim()}*');
++  }
++
++  b
+     ..writeln('Halo $name, mohon maaf mengganggu 🙏')
+     ..writeln(
+-        'Ini pengingat ramah dari warung: sisa utang Anda saat ini ${rupiah(balance)}.');
++      'Ini pengingat ramah dari warung: sisa utang Anda saat ini '
++      '*${rupiah(balance.abs())}*.',
++    );
++
+   if (due != null) b.writeln('Jatuh tempo: ${tgl(due)}.');
++
+   final recent = _newestFirst(txns);
+   if (recent.isNotEmpty) {
+-    b.writeln('\nRincian terakhir:');
++    b.writeln('\nRincian siklus tagihan aktif:');
+     for (final t in recent) {
+       b.writeln('- ${_line(t)}');
+     }
+   }
+-  b.write('\nKalau sudah ada rezekinya, ditunggu ya. Terima kasih banyak!');
++
++  final closing = footer.trim();
++  b.write(
++    '\n${closing.isNotEmpty ? closing : 'Kalau sudah ada rezekinya, ditunggu ya. Terima kasih banyak!'}',
++  );
+   return b.toString();
+ }
+ 
+@@ -99,6 +122,9 @@ String buildReminder({
+ String buildSettlementReceipt({
+   required String name,
+   required List<Txn> txns,
++  String shopName = '',
++  String header = '',
++  String footer = '',
+ }) {
+   final sorted = [...txns]..sort((a, b) {
+     final byDate = a.date.compareTo(b.date);
+@@ -112,13 +138,23 @@ String buildSettlementReceipt({
+       .where((t) => t.type == TxnType.bayar)
+       .fold<int>(0, (sum, t) => sum + t.amount);
+ 
+-  final b = StringBuffer()
++  final b = StringBuffer();
++
++  if (header.trim().isNotEmpty) {
++    b.writeln(header.trim());
++    b.writeln('');
++  }
++  if (shopName.trim().isNotEmpty) {
++    b.writeln('*${shopName.trim()}*');
++  }
++
++  b
+     ..writeln('BUKTI PELUNASAN')
+     ..writeln('Nama: $name')
+     ..writeln('Waktu: ${tglJam(DateTime.now())}')
+     ..writeln('Status: LUNAS')
+-    ..writeln('Total utang: ${rupiah(totalDebt)}')
+-    ..writeln('Total pembayaran: ${rupiah(totalPaid)}')
++    ..writeln('Total utang: *${rupiah(totalDebt)}*')
++    ..writeln('Total pembayaran: *${rupiah(totalPaid)}*')
+     ..writeln('')
+     ..writeln('Rincian transaksi:');
+ 
+@@ -127,7 +163,11 @@ String buildSettlementReceipt({
+   }
+ 
+   b.writeln('');
+-  b.write('Terima kasih sudah menyelesaikan pembayaran 🙏');
++  b.write(
++    footer.trim().isNotEmpty
++        ? footer.trim()
++        : 'Terima kasih sudah menyelesaikan pembayaran 🙏',
++  );
+   return b.toString();
+ }
+ 
+===== STATUS =====
+ M lib/models.dart
+ M lib/screens/customer_screen.dart
+ M lib/screens/home_screen.dart
+ M lib/screens/settings_screen.dart
+ M lib/services/backup_status.dart
+ M lib/status_style.dart
+ M lib/utils.dart
+ M lib/widgets/backup_indicator.dart
+?? add_backup_indicator.sh
+?? backup_app_lock_integrity_20261116_210514/
+?? backup_app_lock_recovery_20261116_210009/
+?? backup_app_lock_safe_20261116_205501/
+?? backup_app_lock_safe_20261116_205635/
+?? backup_app_lock_safe_20261116_205712/
+?? backup_app_lock_storage_20261116_211528/
+?? backup_before_revert_lightweight_20261115_133121/
+?? backup_cloud_reconnect_20261115_133235/
+?? backup_diagnostik_google_20261115_111942/
+?? backup_fix_google_import_20261115_104148/
+?? backup_google_login_20261114_185251/
+?? backup_google_restore_20261115_132224/
+?? backup_google_session_20261115_102650/
+?? backup_google_session_fix_20261115_123805/
+?? backup_google_session_fix_20261115_124655/
+?? backup_listener_google_20261115_125040/
+?? backup_pengaturan_warung_20261116_222928/
+?? backup_remove_app_lock_20261116_213512/
+?? backup_remove_app_lock_20261116_213908/
+?? backup_saldo_piutang_20261116_221958/
+?? backup_sebelum_cloud_ui_20261114_225058/
+?? backup_sebelum_cloud_ui_20261114_225846/
+?? backup_sebelum_fix_sqlite_20261114_231957/
+?? backup_sebelum_google_20261114_184301/
+?? backup_sebelum_integrasi_drive_20261114_221515/
+?? backup_sebelum_pin_ffi_20261114_230953/
+?? backup_sebelum_pin_shared_preferences_20261115_124930/
+?? backup_sebelum_settings_20261114_164203/
+?? backup_sebelum_test_restore_20261114_230544/
+?? backup_sebelum_update_siklus/
+?? backup_sebelum_whatsapp_gambar_20261116_221203/
+?? backup_settings_warung_ui_20261116_223241/
+?? backup_status_google_20261114_192221/
+?? backup_whatsapp_newline_20261116_225847/
+?? fix_diag.sh
+?? fix_google_session.sh
+?? fix_ux.sh
+?? lib/services/shop_message_settings.dart
+?? patch_google_session.py
+?? patchv3.py
+?? tambah_fitur.sh
