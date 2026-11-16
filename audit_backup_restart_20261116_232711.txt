@@ -1,0 +1,320 @@
+===== SEMUA PEMANGGIL load BACKUP =====
+lib/screens/home_screen.dart-82-        const SnackBar(
+lib/screens/home_screen.dart-83-          content: Text(
+lib/screens/home_screen.dart-84-            'WhatsApp tidak bisa dibuka. Pesan disalin, tempel manual ya.',
+lib/screens/home_screen.dart-85-          ),
+lib/screens/home_screen.dart-86-        ),
+lib/screens/home_screen.dart-87-      );
+lib/screens/home_screen.dart-88-    }
+lib/screens/home_screen.dart-89-  }
+lib/screens/home_screen.dart-90-
+lib/screens/home_screen.dart-91-  Future<void> _load() async {
+lib/screens/home_screen.dart-92-    final db = AppDb.instance;
+lib/screens/home_screen.dart-93-    final customers = await db.customers();
+lib/screens/home_screen.dart:94:    await BackupStatus.instance.load(hasData: customers.isNotEmpty);
+lib/screens/home_screen.dart-95-    final txns = await db.allTxns();
+lib/screens/home_screen.dart-96-    final list = buildSummaries(customers, txns)
+lib/screens/home_screen.dart-97-      ..sort((a, b) {
+lib/screens/home_screen.dart-98-        final byBalance = b.balance.compareTo(a.balance);
+lib/screens/home_screen.dart-99-        return byBalance != 0
+lib/screens/home_screen.dart-100-            ? byBalance
+lib/screens/home_screen.dart-101-            : a.customer.name
+lib/screens/home_screen.dart-102-                .toLowerCase()
+lib/screens/home_screen.dart-103-                .compareTo(b.customer.name.toLowerCase());
+lib/screens/home_screen.dart-104-      });
+lib/screens/home_screen.dart-105-    if (!mounted) return;
+lib/screens/home_screen.dart-106-    setState(() {
+
+===== HOME SCREEN INIT DAN LOAD =====
+9-import '../utils.dart';
+10-import '../services/shop_message_settings.dart';
+11-import 'customer_screen.dart';
+12-import 'settings_screen.dart';
+13-import '../services/backup_status.dart';
+14-import '../widgets/backup_indicator.dart';
+15-
+16-class HomeScreen extends StatefulWidget {
+17-  const HomeScreen({super.key});
+18-
+19-  @override
+20-  State<HomeScreen> createState() => _HomeScreenState();
+21-}
+22-
+23-class _HomeScreenState extends State<HomeScreen> {
+24-  List<CustomerSummary> _items = [];
+25-  bool _loading = true;
+26-  String _query = '';
+27-
+28-  @override
+29:  void initState() {
+30-    super.initState();
+31-    _load();
+32-  }
+33-
+34-  Future<void> _openSettings() async {
+35-    await Navigator.push(
+36-      context,
+37-      MaterialPageRoute(builder: (_) => const SettingsScreen()),
+38-    );
+39-    await _load();
+40-  }
+41-
+42-  Future<void> _tagihCepat(CustomerSummary s) async {
+43-    final c = s.customer;
+44-    final txns = await AppDb.instance.txnsFor(c.id!);
+45-    if (!mounted) return;
+46-
+47-    final balance = computeBalance(txns);
+48-    if (balance <= 0) {
+49-      ScaffoldMessenger.of(context).showSnackBar(
+50-        const SnackBar(
+51-          content: Text('Tidak ada utang yang perlu ditagih.'),
+52-        ),
+53-      );
+54-      return;
+55-    }
+56-
+57-    final cycle = activeDebtCycle(txns);
+58-    final messageSettings = await ShopMessageSettings.load();
+59-    final msg = buildReminder(
+60-      name: c.name,
+61-      balance: balance,
+62-      due: nextDueDate(cycle),
+63-      txns: cycle,
+64-      shopName: messageSettings.shopName,
+65-      header: messageSettings.header,
+66-      footer: messageSettings.footer,
+67-    );
+68-
+69-    bool ok;
+70-    try {
+71-      ok = await launchUrl(
+72-        waUri(c.phone, msg),
+73-        mode: LaunchMode.externalApplication,
+74-      );
+75-    } catch (_) {
+76-      ok = false;
+77-    }
+78-
+79-    if (!ok && mounted) {
+80-      await Clipboard.setData(ClipboardData(text: msg));
+81-      ScaffoldMessenger.of(context).showSnackBar(
+82-        const SnackBar(
+83-          content: Text(
+84-            'WhatsApp tidak bisa dibuka. Pesan disalin, tempel manual ya.',
+85-          ),
+86-        ),
+87-      );
+88-    }
+89-  }
+90-
+91:  Future<void> _load() async {
+92-    final db = AppDb.instance;
+93-    final customers = await db.customers();
+94-    await BackupStatus.instance.load(hasData: customers.isNotEmpty);
+95-    final txns = await db.allTxns();
+96-    final list = buildSummaries(customers, txns)
+97-      ..sort((a, b) {
+98-        final byBalance = b.balance.compareTo(a.balance);
+99-        return byBalance != 0
+100-            ? byBalance
+101-            : a.customer.name
+102-                .toLowerCase()
+103-                .compareTo(b.customer.name.toLowerCase());
+104-      });
+105-    if (!mounted) return;
+106-    setState(() {
+107-      _items = list;
+108-      _loading = false;
+109-    });
+110-  }
+111-
+112-  Future<Customer?> _createCustomer() async {
+113-    final c = await showCustomerForm(context);
+114-    if (c == null) return null;
+115-    final id = await AppDb.instance.insertCustomer(c);
+116-    return c.copyWith(id: id);
+117-  }
+118-
+119-  Future<void> _addCustomerOnly() async {
+120-    final c = await _createCustomer();
+121-    if (c != null) await _load();
+122-  }
+123-
+124-  /// Alur cepat: pilih pelanggan -> isi nominal -> simpan.
+125-  Future<void> _quickDebt() async {
+126-    final picked = await showModalBottomSheet<Object>(
+127-      context: context,
+128-      isScrollControlled: true,
+129-      builder: (_) => PickCustomerSheet(items: _items),
+130-    );
+131-    if (picked == null || !mounted) return;
+132-
+133-    Customer? customer;
+134-    var balance = 0;
+135-    if (picked is CustomerSummary) {
+136-      customer = picked.customer;
+137-      balance = picked.balance;
+138-    } else {
+139-      customer = await _createCustomer();
+140-    }
+141-    if (customer == null || !mounted) return;
+142-
+143-    final txn = await showTxnForm(
+144-      context,
+145-      customer: customer,
+146-      type: TxnType.utang,
+147-      balance: balance,
+148-    );
+149-    if (txn != null) await AppDb.instance.insertTxn(txn);
+150-    await _load();
+151-  }
+152-
+153-  Future<void> _openCustomer(Customer c) async {
+154-    await Navigator.push(
+155-      context,
+156-      MaterialPageRoute(builder: (_) => CustomerScreen(customerId: c.id!)),
+157-    );
+158-    await _load();
+159-  }
+160-
+161-  @override
+162-  Widget build(BuildContext context) {
+163-    final q = _query.trim().toLowerCase();
+164-    final visible = _items
+165-        .where((s) => q.isEmpty || s.customer.name.toLowerCase().contains(q))
+166-        .toList();
+167-
+168-    final totalUtangPelanggan =
+169-        _items.fold<int>(0, (sum, s) => sum + (s.balance > 0 ? s.balance : 0));
+170-    final totalPiutangWarung =
+171-        _items.fold<int>(0, (sum, s) => sum + (s.balance < 0 ? -s.balance : 0));
+172-    final telat =
+173-        _items.where((s) => s.status() == DebtStatus.telat).length;
+174-    final mendekati =
+175-        _items.where((s) => s.status() == DebtStatus.mendekati).length;
+176-
+177-    return Scaffold(
+178-      appBar: AppBar(
+179-        title: const Text('Buku Utang Warung'),
+180-        actions: [
+181-          BackupIndicator(onTap: _openSettings),
+182-          IconButton(
+183-            tooltip: 'Pengaturan',
+184-            icon: const Icon(Icons.settings_outlined),
+185-            onPressed: () async {
+186-              await Navigator.push(
+187-                context,
+188-                MaterialPageRoute(
+189-                  builder: (_) => const SettingsScreen(),
+190-                ),
+191-              );
+
+===== STATUS BACKUP LENGKAP =====
+import 'dart:async';
+
+import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+/// Melacak apakah ada perubahan data yang belum di-backup, terpisah untuk
+/// backup lokal (file di HP) dan Google Drive.
+///
+/// Nilai notifier: null = belum diketahui, true = ada perubahan belum
+/// di-backup, false = sudah di-backup.
+class BackupStatus {
+  BackupStatus._();
+
+  static final BackupStatus instance = BackupStatus._();
+
+  // Kunci lama dipertahankan untuk Google Drive agar status lama tidak hilang.
+  static const String _driveKey = 'backup_dirty';
+  static const String _localKey = 'backup_local_dirty';
+
+  final ValueNotifier<bool?> driveDirty = ValueNotifier<bool?>(null);
+  final ValueNotifier<bool?> localDirty = ValueNotifier<bool?>(null);
+
+  bool _loaded = false;
+  int _revision = 0;
+
+  // Semua penulisan status dijalankan berurutan agar status lama
+  // tidak menimpa status terbaru ketika operasi berlangsung bersamaan.
+  Future<void> _writeQueue = Future<void>.value();
+
+  /// Naik setiap data berubah. Dipakai agar perubahan yang terjadi saat
+  /// backup berlangsung tidak ikut dianggap sudah ter-backup.
+  int get revision => _revision;
+
+  /// Dipanggil sekali saat app dibuka. Panggilan berikutnya diabaikan.
+  Future<void> load({required bool hasData}) async {
+    if (_loaded) return;
+    _loaded = true;
+
+    try {
+      final prefs = SharedPreferencesAsync();
+      final drive = await prefs.getBool(_driveKey);
+      final local = await prefs.getBool(_localKey);
+
+      // Pertama kali: kalau sudah ada data tapi belum pernah di-backup,
+      // anggap belum ter-backup. Kalau masih kosong, anggap aman.
+      driveDirty.value ??= drive ?? hasData;
+      localDirty.value ??= local ?? hasData;
+
+      if (drive == null) await _persist(_driveKey, driveDirty.value ?? hasData);
+      if (local == null) await _persist(_localKey, localDirty.value ?? hasData);
+    } catch (e) {
+      debugPrint('Gagal memuat status backup: $e');
+      driveDirty.value ??= hasData;
+      localDirty.value ??= hasData;
+    }
+  }
+
+  void markDirty() {
+    _revision++;
+    driveDirty.value = true;
+    localDirty.value = true;
+    unawaited(_persist(_driveKey, true));
+    unawaited(_persist(_localKey, true));
+  }
+
+  /// Tandai Google Drive sudah ter-backup, hanya jika data tidak berubah
+  /// sejak [revision] dicatat (sebelum backup dibuat).
+  Future<void> markDriveBackedUp(int revision) async {
+    if (revision != _revision) return;
+    driveDirty.value = false;
+    await _persist(_driveKey, false);
+  }
+
+  /// Sama seperti [markDriveBackedUp], untuk backup file lokal.
+  Future<void> markLocalBackedUp(int revision) async {
+    if (revision != _revision) return;
+    localDirty.value = false;
+    await _persist(_localKey, false);
+  }
+
+  /// Nama lama, tetap dipakai oleh alur backup Google Drive.
+  Future<void> markBackedUp(int revision) => markDriveBackedUp(revision);
+
+  Future<void> _persist(String key, bool value) {
+    final operation = _writeQueue.then((_) async {
+      try {
+        await SharedPreferencesAsync().setBool(key, value);
+      } catch (e) {
+        debugPrint('Gagal menyimpan status backup: $e');
+      }
+    });
+
+    _writeQueue = operation;
+    return operation;
+  }
+}
+
+===== PENYIMPANAN PREFERENCES =====
+lib/services/google_drive_service.dart:29:  final SharedPreferencesAsync _preferences = SharedPreferencesAsync();
+lib/services/backup_status.dart:17:  static const String _driveKey = 'backup_dirty';
+lib/services/backup_status.dart:18:  static const String _localKey = 'backup_local_dirty';
+lib/services/backup_status.dart:40:      final prefs = SharedPreferencesAsync();
+lib/services/backup_status.dart:87:        await SharedPreferencesAsync().setBool(key, value);
+lib/services/shop_message_settings.dart:19:    final prefs = SharedPreferencesAsync();
+lib/services/shop_message_settings.dart:28:    final prefs = SharedPreferencesAsync();
+
+===== DIFF CHECK =====

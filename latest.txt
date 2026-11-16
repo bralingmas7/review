@@ -1,595 +1,216 @@
-===== BACKUP LOKAL =====
-183-    }
-184-  }
-185-
-186-  void _message(String message) {
-187-    if (!mounted) return;
-188-    ScaffoldMessenger.of(context).showSnackBar(
-189-      SnackBar(content: Text(message)),
-190-    );
-191-  }
-192-
-193:  Future<void> _backup() async {
-194-    if (_busy) return;
-195-    setState(() => _busy = true);
-196-
-197-    try {
-198-      final revision = BackupStatus.instance.revision;
-199-      final data = await AppDb.instance.exportBackup();
-200-      final json = const JsonEncoder.withIndent('  ').convert(data);
-201-      final now = DateTime.now();
-202-      final stamp = '${now.year}'
-203-          '${now.month.toString().padLeft(2, '0')}'
-204-          '${now.day.toString().padLeft(2, '0')}_'
-205-          '${now.hour.toString().padLeft(2, '0')}'
-206-          '${now.minute.toString().padLeft(2, '0')}';
-207-
-208-      final result = await FilePicker.saveFile(
-209-        dialogTitle: 'Simpan backup Buku Utang Warung',
-210-        fileName: 'backup_buku_utang_$stamp.json',
-211-        bytes: Uint8List.fromList(utf8.encode(json)),
-212-        mimeType: 'application/json',
-213-      );
-214-
-215-      if (result != null) {
-216-        await BackupStatus.instance.markLocalBackedUp(revision);
-217-        _message('File backup berhasil disimpan.');
-218-      }
-219-    } catch (e) {
-220-      _message('Backup gagal: $e');
-221-    } finally {
-222-      if (mounted) setState(() => _busy = false);
-223-    }
-224-  }
-225-
-226-  Future<void> _restore() async {
-227-    if (_busy) return;
-228-    setState(() => _busy = true);
-229-
-230-    try {
-231-      final file = await FilePicker.pickFile(
-232-        type: FileType.custom,
-233-        allowedExtensions: ['json'],
-234-      );
-235-
-236-      if (file == null) return;
-237-
-238-      final bytes = await file.readAsBytes();
-239-      final decoded = jsonDecode(utf8.decode(bytes));
-240-
-241-      if (decoded is! Map<String, dynamic>) {
-242-        throw const FormatException('Isi file JSON tidak valid');
-243-      }
-244-
-245-      // Periksa semua isi file sebelum meminta persetujuan penggantian data.
-246-      AppDb.validateBackupData(decoded);
-247-
-248-      final customerCount = (decoded['customers'] as List).length;
-249-      final txnCount = (decoded['transactions'] as List).length;
-250-
-251-      if (!mounted) return;
-252-
-253-      final confirmed = await showDialog<bool>(
-254-        context: context,
-255-        builder: (context) => AlertDialog(
-256-          title: const Text('Pulihkan data?'),
-257-          content: Text(
-258-            'Data saat ini akan DIGANTI dengan isi backup.\n\n'
+===== SEMUA PEMANGGIL load BACKUP =====
+lib/screens/home_screen.dart-82-        const SnackBar(
+lib/screens/home_screen.dart-83-          content: Text(
+lib/screens/home_screen.dart-84-            'WhatsApp tidak bisa dibuka. Pesan disalin, tempel manual ya.',
+lib/screens/home_screen.dart-85-          ),
+lib/screens/home_screen.dart-86-        ),
+lib/screens/home_screen.dart-87-      );
+lib/screens/home_screen.dart-88-    }
+lib/screens/home_screen.dart-89-  }
+lib/screens/home_screen.dart-90-
+lib/screens/home_screen.dart-91-  Future<void> _load() async {
+lib/screens/home_screen.dart-92-    final db = AppDb.instance;
+lib/screens/home_screen.dart-93-    final customers = await db.customers();
+lib/screens/home_screen.dart:94:    await BackupStatus.instance.load(hasData: customers.isNotEmpty);
+lib/screens/home_screen.dart-95-    final txns = await db.allTxns();
+lib/screens/home_screen.dart-96-    final list = buildSummaries(customers, txns)
+lib/screens/home_screen.dart-97-      ..sort((a, b) {
+lib/screens/home_screen.dart-98-        final byBalance = b.balance.compareTo(a.balance);
+lib/screens/home_screen.dart-99-        return byBalance != 0
+lib/screens/home_screen.dart-100-            ? byBalance
+lib/screens/home_screen.dart-101-            : a.customer.name
+lib/screens/home_screen.dart-102-                .toLowerCase()
+lib/screens/home_screen.dart-103-                .compareTo(b.customer.name.toLowerCase());
+lib/screens/home_screen.dart-104-      });
+lib/screens/home_screen.dart-105-    if (!mounted) return;
+lib/screens/home_screen.dart-106-    setState(() {
 
-===== RESTORE LOKAL =====
-216-        await BackupStatus.instance.markLocalBackedUp(revision);
-217-        _message('File backup berhasil disimpan.');
-218-      }
-219-    } catch (e) {
-220-      _message('Backup gagal: $e');
-221-    } finally {
-222-      if (mounted) setState(() => _busy = false);
-223-    }
-224-  }
-225-
-226:  Future<void> _restore() async {
-227-    if (_busy) return;
-228-    setState(() => _busy = true);
-229-
-230-    try {
-231-      final file = await FilePicker.pickFile(
-232-        type: FileType.custom,
-233-        allowedExtensions: ['json'],
-234-      );
-235-
-236-      if (file == null) return;
-237-
-238-      final bytes = await file.readAsBytes();
-239-      final decoded = jsonDecode(utf8.decode(bytes));
-240-
-241-      if (decoded is! Map<String, dynamic>) {
-242-        throw const FormatException('Isi file JSON tidak valid');
-243-      }
-244-
-245-      // Periksa semua isi file sebelum meminta persetujuan penggantian data.
-246-      AppDb.validateBackupData(decoded);
-247-
-248-      final customerCount = (decoded['customers'] as List).length;
-249-      final txnCount = (decoded['transactions'] as List).length;
-250-
-251-      if (!mounted) return;
-252-
-253-      final confirmed = await showDialog<bool>(
-254-        context: context,
-255-        builder: (context) => AlertDialog(
-256-          title: const Text('Pulihkan data?'),
-257-          content: Text(
-258-            'Data saat ini akan DIGANTI dengan isi backup.\n\n'
-259-            'Pelanggan: $customerCount\n'
-260-            'Transaksi: $txnCount\n\n'
-261-            'Pastikan Anda sudah membuat backup data saat ini.',
-262-          ),
-263-          actions: [
-264-            TextButton(
-265-              onPressed: () => Navigator.pop(context, false),
-266-              child: const Text('Batal'),
-267-            ),
-268-            FilledButton(
-269-              onPressed: () => Navigator.pop(context, true),
-270-              child: const Text('Ganti dan pulihkan'),
-271-            ),
-272-          ],
-273-        ),
-274-      );
-275-
-276-      if (confirmed != true || !mounted) return;
-277-
-278-      await AppDb.instance.restoreBackup(decoded);
-279-      _message('Restore berhasil. Data telah dipulihkan.');
-280-    } catch (e) {
-281-      _message('Restore gagal. Data lama tetap aman: $e');
-282-    } finally {
-283-      if (mounted) setState(() => _busy = false);
-284-    }
-285-  }
-286-
-287-
-288-  Future<String?> _askCloudPassword({required bool confirm}) async {
-289-    final passwordController = TextEditingController();
-290-    final confirmController = TextEditingController();
-291-    final formKey = GlobalKey<FormState>();
-
-===== BACKUP GOOGLE DRIVE =====
-378-            ],
-379-          ),
-380-        ),
-381-      );
-382-    } finally {
-383-      passwordController.dispose();
-384-      confirmController.dispose();
-385-    }
-386-  }
-387-
-388:  Future<void> _cloudBackup() async {
-389-    if (_busy || _googleEmail == null) return;
-390-
-391-    setState(() => _busy = true);
-392-
-393-    try {
-394-      if (GoogleDriveService.instance.account == null) {
-395-        final email = await GoogleDriveService.instance.connectAndTest();
-396-        if (!mounted) return;
-397-        setState(() => _googleEmail = email);
-398-      }
-399-
-400-      final password = await _askCloudPassword(confirm: true);
-401-      if (password == null || !mounted) return;
-402-
-403-      final revision = BackupStatus.instance.revision;
-404-      final data = await AppDb.instance.exportBackup();
-405-      final encrypted =
-406-          await BackupCryptoService.instance.encryptBackup(data, password);
-407-
-408-      final uploaded =
-409-          await GoogleDriveService.instance.uploadEncryptedBackup(encrypted);
-410-
-411-      await BackupStatus.instance.markBackedUp(revision);
-412-      _message('Backup terenkripsi berhasil diunggah: ${uploaded.name}');
-413-    } catch (e) {
-414-      _message('Backup Google Drive gagal: $e');
-415-    } finally {
-416-      if (mounted) setState(() => _busy = false);
-417-    }
-418-  }
-419-
-420-  Future<void> _cloudRestore() async {
-421-    if (_busy || _googleEmail == null) return;
-422-
-423-    setState(() => _busy = true);
-424-
-425-    try {
-426-      if (GoogleDriveService.instance.account == null) {
-427-        final email = await GoogleDriveService.instance.connectAndTest();
-428-        if (!mounted) return;
-429-        setState(() => _googleEmail = email);
-430-      }
-431-
-432-      final files =
-433-          await GoogleDriveService.instance.listEncryptedBackups();
-434-
-435-      if (!mounted) return;
-436-
-437-      if (files.isEmpty) {
-438-        _message('Belum ada backup Buku Utang Warung di Google Drive.');
-439-        return;
-440-      }
-441-
-442-      final selectedIndex = await showDialog<int>(
-443-        context: context,
-444-        builder: (dialogContext) => AlertDialog(
-445-          title: const Text('Pilih backup cloud'),
-446-          content: SizedBox(
-447-            width: double.maxFinite,
-448-            child: ListView(
-449-              shrinkWrap: true,
-450-              children: [
-451-                for (var i = 0; i < files.length; i++)
-452-                  ListTile(
-453-                    leading: const Icon(Icons.cloud_download_outlined),
-454-                    title: Text(files[i].name ?? 'Backup tanpa nama'),
-455-                    subtitle: Text(
-456-                      files[i].createdTime?.toLocal().toString() ??
-457-                          'Waktu tidak tersedia',
-458-                    ),
-459-                    onTap: () => Navigator.pop(dialogContext, i),
-460-                  ),
-461-              ],
-462-            ),
-463-          ),
-464-          actions: [
-465-            TextButton(
-466-              onPressed: () => Navigator.pop(dialogContext),
-467-              child: const Text('Batal'),
-468-            ),
-469-          ],
-470-        ),
-471-      );
-472-
-473-      if (selectedIndex == null || !mounted) return;
-
-===== RESTORE GOOGLE DRIVE =====
-410-
-411-      await BackupStatus.instance.markBackedUp(revision);
-412-      _message('Backup terenkripsi berhasil diunggah: ${uploaded.name}');
-413-    } catch (e) {
-414-      _message('Backup Google Drive gagal: $e');
-415-    } finally {
-416-      if (mounted) setState(() => _busy = false);
-417-    }
-418-  }
-419-
-420:  Future<void> _cloudRestore() async {
-421-    if (_busy || _googleEmail == null) return;
-422-
-423-    setState(() => _busy = true);
-424-
-425-    try {
-426-      if (GoogleDriveService.instance.account == null) {
-427-        final email = await GoogleDriveService.instance.connectAndTest();
-428-        if (!mounted) return;
-429-        setState(() => _googleEmail = email);
-430-      }
-431-
-432-      final files =
-433-          await GoogleDriveService.instance.listEncryptedBackups();
-434-
-435-      if (!mounted) return;
-436-
-437-      if (files.isEmpty) {
-438-        _message('Belum ada backup Buku Utang Warung di Google Drive.');
-439-        return;
-440-      }
-441-
-442-      final selectedIndex = await showDialog<int>(
-443-        context: context,
-444-        builder: (dialogContext) => AlertDialog(
-445-          title: const Text('Pilih backup cloud'),
-446-          content: SizedBox(
-447-            width: double.maxFinite,
-448-            child: ListView(
-449-              shrinkWrap: true,
-450-              children: [
-451-                for (var i = 0; i < files.length; i++)
-452-                  ListTile(
-453-                    leading: const Icon(Icons.cloud_download_outlined),
-454-                    title: Text(files[i].name ?? 'Backup tanpa nama'),
-455-                    subtitle: Text(
-456-                      files[i].createdTime?.toLocal().toString() ??
-457-                          'Waktu tidak tersedia',
-458-                    ),
-459-                    onTap: () => Navigator.pop(dialogContext, i),
-460-                  ),
-461-              ],
-462-            ),
-463-          ),
-464-          actions: [
-465-            TextButton(
-466-              onPressed: () => Navigator.pop(dialogContext),
-467-              child: const Text('Batal'),
-468-            ),
-469-          ],
-470-        ),
-471-      );
-472-
-473-      if (selectedIndex == null || !mounted) return;
-474-
-475-      final selectedFile = files[selectedIndex];
-476-      final fileId = selectedFile.id;
-477-      if (fileId == null || fileId.isEmpty) {
-478-        throw StateError('ID backup Google Drive tidak tersedia.');
-479-      }
-480-
-481-      final password = await _askCloudPassword(confirm: false);
-482-      if (password == null || !mounted) return;
-483-
-484-      final encrypted =
-485-          await GoogleDriveService.instance.downloadEncryptedBackup(fileId);
-486-
-487-      final decoded =
-488-          await BackupCryptoService.instance.decryptBackup(
-489-        encrypted,
-490-        password,
-491-      );
-492-
-493-      AppDb.validateBackupData(decoded);
-494-
-495-      final customerCount = (decoded['customers'] as List).length;
-496-      final transactionCount = (decoded['transactions'] as List).length;
-497-
-498-      if (!mounted) return;
-499-
-500-      final confirmed = await showDialog<bool>(
-501-        context: context,
-502-        builder: (dialogContext) => AlertDialog(
-503-          title: const Text('Pulihkan backup cloud?'),
-504-          content: Text(
-505-            'Data lokal saat ini akan DIGANTI dengan isi backup cloud.\n\n'
-
-===== EKSPOR DATABASE =====
-114-    return id;
-115-  }
-116-
-117-  Future<void> deleteTxn(int id) async {
-118-    final db = await _database;
-119-    await db.delete('transactions', where: 'id = ?', whereArgs: [id]);
-120-    BackupStatus.instance.markDirty();
-121-  }
-122-
-123-  // Membuat snapshot JSON tanpa mengubah database aktif.
-124:  Future<Map<String, Object?>> exportBackup() async {
-125-    final db = await _database;
-126-    return {
-127-      'format': backupFormat,
-128-      'version': backupVersion,
-129-      'exported_at': DateTime.now().toUtc().toIso8601String(),
-130-      'customers': await db.query('customers', orderBy: 'id ASC'),
-131-      'transactions': await db.query('transactions', orderBy: 'id ASC'),
-132-    };
-133-  }
-134-
-135-  static List<Map<String, Object?>> _rows(
-136-    Object? value,
-137-    String label,
-138-  ) {
-139-    if (value is! List) {
-140-      throw FormatException('Bagian $label bukan daftar yang valid');
-141-    }
+===== HOME SCREEN INIT DAN LOAD =====
+9-import '../utils.dart';
+10-import '../services/shop_message_settings.dart';
+11-import 'customer_screen.dart';
+12-import 'settings_screen.dart';
+13-import '../services/backup_status.dart';
+14-import '../widgets/backup_indicator.dart';
+15-
+16-class HomeScreen extends StatefulWidget {
+17-  const HomeScreen({super.key});
+18-
+19-  @override
+20-  State<HomeScreen> createState() => _HomeScreenState();
+21-}
+22-
+23-class _HomeScreenState extends State<HomeScreen> {
+24-  List<CustomerSummary> _items = [];
+25-  bool _loading = true;
+26-  String _query = '';
+27-
+28-  @override
+29:  void initState() {
+30-    super.initState();
+31-    _load();
+32-  }
+33-
+34-  Future<void> _openSettings() async {
+35-    await Navigator.push(
+36-      context,
+37-      MaterialPageRoute(builder: (_) => const SettingsScreen()),
+38-    );
+39-    await _load();
+40-  }
+41-
+42-  Future<void> _tagihCepat(CustomerSummary s) async {
+43-    final c = s.customer;
+44-    final txns = await AppDb.instance.txnsFor(c.id!);
+45-    if (!mounted) return;
+46-
+47-    final balance = computeBalance(txns);
+48-    if (balance <= 0) {
+49-      ScaffoldMessenger.of(context).showSnackBar(
+50-        const SnackBar(
+51-          content: Text('Tidak ada utang yang perlu ditagih.'),
+52-        ),
+53-      );
+54-      return;
+55-    }
+56-
+57-    final cycle = activeDebtCycle(txns);
+58-    final messageSettings = await ShopMessageSettings.load();
+59-    final msg = buildReminder(
+60-      name: c.name,
+61-      balance: balance,
+62-      due: nextDueDate(cycle),
+63-      txns: cycle,
+64-      shopName: messageSettings.shopName,
+65-      header: messageSettings.header,
+66-      footer: messageSettings.footer,
+67-    );
+68-
+69-    bool ok;
+70-    try {
+71-      ok = await launchUrl(
+72-        waUri(c.phone, msg),
+73-        mode: LaunchMode.externalApplication,
+74-      );
+75-    } catch (_) {
+76-      ok = false;
+77-    }
+78-
+79-    if (!ok && mounted) {
+80-      await Clipboard.setData(ClipboardData(text: msg));
+81-      ScaffoldMessenger.of(context).showSnackBar(
+82-        const SnackBar(
+83-          content: Text(
+84-            'WhatsApp tidak bisa dibuka. Pesan disalin, tempel manual ya.',
+85-          ),
+86-        ),
+87-      );
+88-    }
+89-  }
+90-
+91:  Future<void> _load() async {
+92-    final db = AppDb.instance;
+93-    final customers = await db.customers();
+94-    await BackupStatus.instance.load(hasData: customers.isNotEmpty);
+95-    final txns = await db.allTxns();
+96-    final list = buildSummaries(customers, txns)
+97-      ..sort((a, b) {
+98-        final byBalance = b.balance.compareTo(a.balance);
+99-        return byBalance != 0
+100-            ? byBalance
+101-            : a.customer.name
+102-                .toLowerCase()
+103-                .compareTo(b.customer.name.toLowerCase());
+104-      });
+105-    if (!mounted) return;
+106-    setState(() {
+107-      _items = list;
+108-      _loading = false;
+109-    });
+110-  }
+111-
+112-  Future<Customer?> _createCustomer() async {
+113-    final c = await showCustomerForm(context);
+114-    if (c == null) return null;
+115-    final id = await AppDb.instance.insertCustomer(c);
+116-    return c.copyWith(id: id);
+117-  }
+118-
+119-  Future<void> _addCustomerOnly() async {
+120-    final c = await _createCustomer();
+121-    if (c != null) await _load();
+122-  }
+123-
+124-  /// Alur cepat: pilih pelanggan -> isi nominal -> simpan.
+125-  Future<void> _quickDebt() async {
+126-    final picked = await showModalBottomSheet<Object>(
+127-      context: context,
+128-      isScrollControlled: true,
+129-      builder: (_) => PickCustomerSheet(items: _items),
+130-    );
+131-    if (picked == null || !mounted) return;
+132-
+133-    Customer? customer;
+134-    var balance = 0;
+135-    if (picked is CustomerSummary) {
+136-      customer = picked.customer;
+137-      balance = picked.balance;
+138-    } else {
+139-      customer = await _createCustomer();
+140-    }
+141-    if (customer == null || !mounted) return;
 142-
-143-    return value.map((item) {
-144-      if (item is! Map) {
-145-        throw FormatException('Ada data $label yang tidak valid');
-146-      }
-147-      return Map<String, Object?>.from(item);
-148-    }).toList();
-149-  }
-150-
-151-  // Validasi lengkap dilakukan sebelum database boleh diubah.
-152-  static void validateBackupData(Map<String, dynamic> data) {
-153-    if (data['format'] != backupFormat) {
-154-      throw const FormatException('Format file bukan backup Buku Utang Warung');
-155-    }
-156-    if (data['version'] != backupVersion) {
-157-      throw const FormatException('Versi backup tidak didukung');
-158-    }
-159-
-160-    final customers = _rows(data['customers'], 'pelanggan');
-161-    final transactions = _rows(data['transactions'], 'transaksi');
-162-
-163-    final customerIds = <int>{};
-164-
-165-    for (final row in customers) {
-166-      final id = row['id'];
-167-      if (id is! int || id <= 0 || !customerIds.add(id)) {
-168-        throw const FormatException('ID pelanggan tidak valid atau duplikat');
-169-      }
-170-      if (row['name'] is! String ||
-171-          row['phone'] is! String ||
-172-          row['note'] is! String ||
-173-          row['credit_limit'] is! int ||
-174-          (row['credit_limit'] as int) < 0 ||
-175-          row['created_at'] is! int) {
-176-        throw const FormatException('Data pelanggan tidak lengkap atau rusak');
-177-      }
-178-    }
-179-
-180-    final txnIds = <int>{};
-181-
-182-    for (final row in transactions) {
-183-      final id = row['id'];
-184-      final customerId = row['customer_id'];
-185-      final type = row['type'];
-186-      final amount = row['amount'];
-187-      final dueDate = row['due_date'];
-188-
-189-      if (id is! int || id <= 0 || !txnIds.add(id)) {
---
-201-          row['note'] is! String ||
-202-          row['date'] is! int ||
-203-          (dueDate != null && dueDate is! int)) {
-204-        throw const FormatException('Data transaksi tidak lengkap atau rusak');
-205-      }
-206-    }
-207-  }
-208-
-209-  // Penggantian seluruh data dilakukan dalam satu transaksi SQLite.
-210-  // Jika satu insert gagal, SQLite membatalkan seluruh proses.
-211:  Future<void> restoreBackup(Map<String, dynamic> data) async {
-212-    validateBackupData(data);
-213-
-214-    final customers = _rows(data['customers'], 'pelanggan');
-215-    final transactions = _rows(data['transactions'], 'transaksi');
-216-    final db = await _database;
-217-
-218-    await db.transaction((txn) async {
-219-      await txn.delete('transactions');
-220-      await txn.delete('customers');
-221-
-222-      for (final row in customers) {
-223-        await txn.insert('customers', row);
-224-      }
-225-
-226-      for (final row in transactions) {
-227-        await txn.insert('transactions', row);
-228-      }
-229-    });
-230-
-231-    BackupStatus.instance.markDirty();
-232-  }
-233-}
+143-    final txn = await showTxnForm(
+144-      context,
+145-      customer: customer,
+146-      type: TxnType.utang,
+147-      balance: balance,
+148-    );
+149-    if (txn != null) await AppDb.instance.insertTxn(txn);
+150-    await _load();
+151-  }
+152-
+153-  Future<void> _openCustomer(Customer c) async {
+154-    await Navigator.push(
+155-      context,
+156-      MaterialPageRoute(builder: (_) => CustomerScreen(customerId: c.id!)),
+157-    );
+158-    await _load();
+159-  }
+160-
+161-  @override
+162-  Widget build(BuildContext context) {
+163-    final q = _query.trim().toLowerCase();
+164-    final visible = _items
+165-        .where((s) => q.isEmpty || s.customer.name.toLowerCase().contains(q))
+166-        .toList();
+167-
+168-    final totalUtangPelanggan =
+169-        _items.fold<int>(0, (sum, s) => sum + (s.balance > 0 ? s.balance : 0));
+170-    final totalPiutangWarung =
+171-        _items.fold<int>(0, (sum, s) => sum + (s.balance < 0 ? -s.balance : 0));
+172-    final telat =
+173-        _items.where((s) => s.status() == DebtStatus.telat).length;
+174-    final mendekati =
+175-        _items.where((s) => s.status() == DebtStatus.mendekati).length;
+176-
+177-    return Scaffold(
+178-      appBar: AppBar(
+179-        title: const Text('Buku Utang Warung'),
+180-        actions: [
+181-          BackupIndicator(onTap: _openSettings),
+182-          IconButton(
+183-            tooltip: 'Pengaturan',
+184-            icon: const Icon(Icons.settings_outlined),
+185-            onPressed: () async {
+186-              await Navigator.push(
+187-                context,
+188-                MaterialPageRoute(
+189-                  builder: (_) => const SettingsScreen(),
+190-                ),
+191-              );
 
-===== INDIKATOR =====
-import 'dart:async';
-
-import 'package:flutter/material.dart';
-
-import '../services/backup_status.dart';
-
-/// Dua bulatan status di AppBar: ikon HP = backup lokal, ikon awan = Google
-/// Drive. Merah/biru bergantian = belum di-backup. Hijau = sudah di-backup.
-class BackupIndicator extends StatefulWidget {
-  const BackupIndicator({super.key, this.onTap});
-
-  final VoidCallback? onTap;
-
-  @override
-  State<BackupIndicator> createState() => _BackupIndicatorState();
-}
-
-class _BackupIndicatorState extends State<BackupIndicator> {
-  Timer? _timer;
-  bool _alt = false;
-
-  @override
-  void initState() {
-    super.initState();
-    BackupStatus.instance.localDirty.addListener(_onChanged);
-    BackupStatus.instance.driveDirty.addListener(_onChanged);
-    _syncTimer();
-  }
-
-  @override
-  void dispose() {
-    BackupStatus.instance.localDirty.removeListener(_onChanged);
-    BackupStatus.instance.driveDirty.removeListener(_onChanged);
-    _timer?.cancel();
-    super.dispose();
-  }
-
-  bool get _anyDirty =>
-      BackupStatus.instance.localDirty.value == true ||
-      BackupStatus.instance.driveDirty.value == true;
-
-  void _onChanged() {
-    _syncTimer();
-    if (mounted) setState(() {});
-  }
-
-  void _syncTimer() {
-    if (_anyDirty && _timer == null) {
-      _timer = Timer.periodic(const Duration(milliseconds: 600), (_) {
-        if (mounted) setState(() => _alt = !_alt);
-      });
-    } else if (!_anyDirty && _timer != null) {
-      _timer!.cancel();
-      _timer = null;
-      _alt = false;
-    }
-  }
-
-  String _describe(bool? state) {
-    if (state == null) return 'belum diketahui';
-    return state ? 'ada perubahan belum di-backup' : 'sudah di-backup';
-  }
-
-  Color _colorFor(bool? state) {
-    if (state == null) return Colors.grey;
-    if (state) return _alt ? Colors.blue : Colors.red;
-    return Colors.green;
-  }
-
-  Widget _item(IconData icon, bool? state) {
-    final color = _colorFor(state);
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(icon, size: 18),
-        const SizedBox(width: 4),
-        AnimatedContainer(
-          duration: const Duration(milliseconds: 250),
-          width: 12,
-          height: 12,
-          decoration: BoxDecoration(
-            color: color,
-            shape: BoxShape.circle,
-            boxShadow: [
-              BoxShadow(
-                color: color.withOpacity(0.5),
-                blurRadius: 5,
-                spreadRadius: 1,
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final local = BackupStatus.instance.localDirty.value;
-    final drive = BackupStatus.instance.driveDirty.value;
-
-    // Status belum diketahui: jangan tampilkan apa pun supaya tidak salah.
-    if (local == null && drive == null) return const SizedBox.shrink();
-
-    return Tooltip(
-      message: 'Backup lokal: ${_describe(local)}\n'
-          'Backup Google Drive: ${_describe(drive)}',
-      child: InkWell(
-        onTap: widget.onTap,
-        borderRadius: BorderRadius.circular(20),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _item(Icons.smartphone, local),
-              const SizedBox(width: 10),
-              _item(Icons.cloud_outlined, drive),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-===== STATUS BACKUP =====
+===== STATUS BACKUP LENGKAP =====
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
@@ -686,5 +307,14 @@ class BackupStatus {
     return operation;
   }
 }
+
+===== PENYIMPANAN PREFERENCES =====
+lib/services/google_drive_service.dart:29:  final SharedPreferencesAsync _preferences = SharedPreferencesAsync();
+lib/services/backup_status.dart:17:  static const String _driveKey = 'backup_dirty';
+lib/services/backup_status.dart:18:  static const String _localKey = 'backup_local_dirty';
+lib/services/backup_status.dart:40:      final prefs = SharedPreferencesAsync();
+lib/services/backup_status.dart:87:        await SharedPreferencesAsync().setBool(key, value);
+lib/services/shop_message_settings.dart:19:    final prefs = SharedPreferencesAsync();
+lib/services/shop_message_settings.dart:28:    final prefs = SharedPreferencesAsync();
 
 ===== DIFF CHECK =====
