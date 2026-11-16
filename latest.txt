@@ -1,17 +1,8 @@
-===== AUDIT FITUR BUKU UTANG WARUNG =====
-Mon Nov 16 20:47:11 WIB 2026
+===== AUDIT WHATSAPP + APP LOCK =====
+Mon Nov 16 20:49:15 WIB 2026
 
-===== 1. FETCH GITHUB =====
-From https://github.com/bralingmas7/buku
- * branch            main       -> FETCH_HEAD
-
-===== 2. POSISI COMMIT =====
-401319e Tambah indikator status backup di halaman utama
-401319e Tambah indikator status backup di halaman utama
-0	0
-Format angka: GitHub lebih dahulu, lokal sesudahnya.
-
-===== 3. STATUS LOKAL =====
+===== 1. POSISI REPO =====
+401319e
  M .github/workflows/build-apk.yml
  M lib/main.dart
  M lib/screens/home_screen.dart
@@ -54,286 +45,935 @@ Format angka: GitHub lebih dahulu, lokal sesudahnya.
 ?? patchv3.py
 ?? tambah_fitur.sh
 
-===== 4. PEMERIKSAAN DUA INDIKATOR =====
+===== 2. DEPENDENSI =====
+6:environment:
+7:  sdk: ">=3.3.0 <4.0.0"
+14:  url_launcher: ^6.3.0
+16:  local_auth: ^3.0.0
+21:  cryptography: ^2.7.0
+22:  shared_preferences: 2.3.1
 
---- lib/services/backup_status.dart ---
-11:class BackupStatus {
-12:  BackupStatus._();
-14:  static final BackupStatus instance = BackupStatus._();
-20:  final ValueNotifier<bool?> driveDirty = ValueNotifier<bool?>(null);
-21:  final ValueNotifier<bool?> localDirty = ValueNotifier<bool?>(null);
-42:      driveDirty.value ??= drive ?? hasData;
-43:      localDirty.value ??= local ?? hasData;
-45:      if (drive == null) await _persist(_driveKey, driveDirty.value ?? hasData);
-46:      if (local == null) await _persist(_localKey, localDirty.value ?? hasData);
-49:      driveDirty.value ??= hasData;
-50:      localDirty.value ??= hasData;
-54:  void markDirty() {
-56:    driveDirty.value = true;
-57:    localDirty.value = true;
-64:  Future<void> markDriveBackedUp(int revision) async {
-66:    driveDirty.value = false;
-70:  /// Sama seperti [markDriveBackedUp], untuk backup file lokal.
-71:  Future<void> markLocalBackedUp(int revision) async {
-73:    localDirty.value = false;
-78:  Future<void> markBackedUp(int revision) => markDriveBackedUp(revision);
+===== 3. DEFINISI FUNGSI WHATSAPP =====
+lib/utils.dart:59:Uri waUri(String phone, String text) {
+lib/utils.dart:76:String buildReminder({
+lib/models.dart:3:enum DebtStatus { lunas, lancar, mendekati, telat }
+lib/models.dart:105:int computeBalance(List<Txn> txns) => txns.fold<int>(
+lib/models.dart:112:DateTime? nextDueDate(List<Txn> txns) {
+lib/models.dart:134:class CustomerSummary {
+lib/models.dart:174:      balance: computeBalance(list),
+lib/models.dart:175:      nextDue: nextDueDate(list),
+lib/models.dart:193:List<Txn> activeDebtCycle(List<Txn> txns) {
+lib/screens/customer_screen.dart:54:    final oldBalance = computeBalance(_txns);
+lib/screens/customer_screen.dart:69:    final newBalance = computeBalance(_txns);
+lib/screens/customer_screen.dart:110:        waUri(c.phone, msg),
+lib/screens/customer_screen.dart:137:    final msg = buildReminder(
+lib/screens/customer_screen.dart:139:      balance: computeBalance(_txns),
+lib/screens/customer_screen.dart:140:      due: nextDueDate(activeDebtCycle(_txns)),
+lib/screens/customer_screen.dart:141:      txns: activeDebtCycle(_txns),
+lib/screens/customer_screen.dart:145:      ok = await launchUrl(waUri(c.phone, msg),
+lib/screens/customer_screen.dart:161:        balance: computeBalance(_txns),
+lib/screens/customer_screen.dart:200:      balance: computeBalance(_txns),
+lib/screens/customer_screen.dart:201:      nextDue: nextDueDate(_txns),
+lib/screens/home_screen.dart:44:    final cycle = activeDebtCycle(txns);
+lib/screens/home_screen.dart:45:    final msg = buildReminder(
+lib/screens/home_screen.dart:47:      balance: computeBalance(txns),
+lib/screens/home_screen.dart:48:      due: nextDueDate(cycle),
+lib/screens/home_screen.dart:55:        waUri(c.phone, msg),
 
---- lib/widgets/backup_indicator.dart ---
-9:class BackupIndicator extends StatefulWidget {
-10:  const BackupIndicator({super.key, this.onTap});
-15:  State<BackupIndicator> createState() => _BackupIndicatorState();
-18:class _BackupIndicatorState extends State<BackupIndicator> {
-25:    BackupStatus.instance.localDirty.addListener(_onChanged);
-26:    BackupStatus.instance.driveDirty.addListener(_onChanged);
-32:    BackupStatus.instance.localDirty.removeListener(_onChanged);
-33:    BackupStatus.instance.driveDirty.removeListener(_onChanged);
-39:      BackupStatus.instance.localDirty.value == true ||
-40:      BackupStatus.instance.driveDirty.value == true;
-99:    final local = BackupStatus.instance.localDirty.value;
-100:    final drive = BackupStatus.instance.driveDirty.value;
-116:              _item(Icons.smartphone, local),
-118:              _item(Icons.cloud_outlined, drive),
-
---- lib/screens/home_screen.dart ---
-77:    await BackupStatus.instance.load(hasData: customers.isNotEmpty);
-162:          BackupIndicator(onTap: _openSettings),
-
---- lib/main.dart ---
-Tidak ditemukan pola indikator.
-
---- lib/screens/settings_screen.dart ---
-153:      final revision = BackupStatus.instance.revision;
-171:        await BackupStatus.instance.markLocalBackedUp(revision);
-243:  Future<String?> _askCloudPassword({required bool confirm}) async {
-343:  Future<void> _cloudBackup() async {
-355:      final password = await _askCloudPassword(confirm: true);
-358:      final revision = BackupStatus.instance.revision;
-366:      await BackupStatus.instance.markBackedUp(revision);
-375:  Future<void> _cloudRestore() async {
-400:          title: const Text('Pilih backup cloud'),
-408:                    leading: const Icon(Icons.cloud_download_outlined),
-436:      final password = await _askCloudPassword(confirm: false);
-458:          title: const Text('Pulihkan backup cloud?'),
-460:            'Data lokal saat ini akan DIGANTI dengan isi backup cloud.\n\n'
-556:                    leading: Icon(Icons.cloud_outlined),
-559:                      'Hubungkan akun Google untuk menyiapkan backup cloud.',
-636:                        onPressed: _busy ? null : _cloudBackup,
-637:                        icon: const Icon(Icons.cloud_upload_outlined),
-645:                        onPressed: _busy ? null : _cloudRestore,
-646:                        icon: const Icon(Icons.cloud_download_outlined),
-653:                    'Backup cloud dienkripsi sebelum dikirim. '
-
-===== 5. ISI FILE INDIKATOR LOKAL =====
-
------ lib/services/backup_status.dart -----
-import 'dart:async';
-
-import 'package:flutter/foundation.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-
-/// Melacak apakah ada perubahan data yang belum di-backup, terpisah untuk
-/// backup lokal (file di HP) dan Google Drive.
-///
-/// Nilai notifier: null = belum diketahui, true = ada perubahan belum
-/// di-backup, false = sudah di-backup.
-class BackupStatus {
-  BackupStatus._();
-
-  static final BackupStatus instance = BackupStatus._();
-
-  // Kunci lama dipertahankan untuk Google Drive agar status lama tidak hilang.
-  static const String _driveKey = 'backup_dirty';
-  static const String _localKey = 'backup_local_dirty';
-
-  final ValueNotifier<bool?> driveDirty = ValueNotifier<bool?>(null);
-  final ValueNotifier<bool?> localDirty = ValueNotifier<bool?>(null);
-
-  bool _loaded = false;
-  int _revision = 0;
-
-  /// Naik setiap data berubah. Dipakai agar perubahan yang terjadi saat
-  /// backup berlangsung tidak ikut dianggap sudah ter-backup.
-  int get revision => _revision;
-
-  /// Dipanggil sekali saat app dibuka. Panggilan berikutnya diabaikan.
-  Future<void> load({required bool hasData}) async {
-    if (_loaded) return;
-    _loaded = true;
-
-    try {
-      final prefs = SharedPreferencesAsync();
-      final drive = await prefs.getBool(_driveKey);
-      final local = await prefs.getBool(_localKey);
-
-      // Pertama kali: kalau sudah ada data tapi belum pernah di-backup,
-      // anggap belum ter-backup. Kalau masih kosong, anggap aman.
-      driveDirty.value ??= drive ?? hasData;
-      localDirty.value ??= local ?? hasData;
-
-      if (drive == null) await _persist(_driveKey, driveDirty.value ?? hasData);
-      if (local == null) await _persist(_localKey, localDirty.value ?? hasData);
-    } catch (e) {
-      debugPrint('Gagal memuat status backup: $e');
-      driveDirty.value ??= hasData;
-      localDirty.value ??= hasData;
-    }
-  }
-
-  void markDirty() {
-    _revision++;
-    driveDirty.value = true;
-    localDirty.value = true;
-    unawaited(_persist(_driveKey, true));
-    unawaited(_persist(_localKey, true));
-  }
-
-  /// Tandai Google Drive sudah ter-backup, hanya jika data tidak berubah
-  /// sejak [revision] dicatat (sebelum backup dibuat).
-  Future<void> markDriveBackedUp(int revision) async {
-    if (revision != _revision) return;
-    driveDirty.value = false;
-    await _persist(_driveKey, false);
-  }
-
-  /// Sama seperti [markDriveBackedUp], untuk backup file lokal.
-  Future<void> markLocalBackedUp(int revision) async {
-    if (revision != _revision) return;
-    localDirty.value = false;
-    await _persist(_localKey, false);
-  }
-
-  /// Nama lama, tetap dipakai oleh alur backup Google Drive.
-  Future<void> markBackedUp(int revision) => markDriveBackedUp(revision);
-
-  Future<void> _persist(String key, bool value) async {
-    try {
-      await SharedPreferencesAsync().setBool(key, value);
-    } catch (e) {
-      debugPrint('Gagal menyimpan status backup: $e');
-    }
-  }
-}
-
------ lib/widgets/backup_indicator.dart -----
-import 'dart:async';
-
+===== 4. IMPLEMENTASI TOMBOL WHATSAPP =====
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 
+import '../db.dart';
+import '../dialogs.dart';
+import '../models.dart';
+import '../status_style.dart';
+import '../utils.dart';
+import 'customer_screen.dart';
+import 'settings_screen.dart';
 import '../services/backup_status.dart';
+import '../widgets/backup_indicator.dart';
 
-/// Dua bulatan status di AppBar: ikon HP = backup lokal, ikon awan = Google
-/// Drive. Merah/biru bergantian = belum di-backup. Hijau = sudah di-backup.
-class BackupIndicator extends StatefulWidget {
-  const BackupIndicator({super.key, this.onTap});
-
-  final VoidCallback? onTap;
+class HomeScreen extends StatefulWidget {
+  const HomeScreen({super.key});
 
   @override
-  State<BackupIndicator> createState() => _BackupIndicatorState();
+  State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _BackupIndicatorState extends State<BackupIndicator> {
-  Timer? _timer;
-  bool _alt = false;
+class _HomeScreenState extends State<HomeScreen> {
+  List<CustomerSummary> _items = [];
+  bool _loading = true;
+  String _query = '';
 
   @override
   void initState() {
     super.initState();
-    BackupStatus.instance.localDirty.addListener(_onChanged);
-    BackupStatus.instance.driveDirty.addListener(_onChanged);
-    _syncTimer();
+    _load();
+  }
+
+  Future<void> _openSettings() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const SettingsScreen()),
+    );
+    await _load();
+  }
+
+  Future<void> _tagihCepat(CustomerSummary s) async {
+    final c = s.customer;
+    final txns = await AppDb.instance.txnsFor(c.id!);
+    final cycle = activeDebtCycle(txns);
+    final msg = buildReminder(
+      name: c.name,
+      balance: computeBalance(txns),
+      due: nextDueDate(cycle),
+      txns: cycle,
+    );
+
+    bool ok;
+    try {
+      ok = await launchUrl(
+        waUri(c.phone, msg),
+        mode: LaunchMode.externalApplication,
+      );
+    } catch (_) {
+      ok = false;
+    }
+
+    if (!ok && mounted) {
+      await Clipboard.setData(ClipboardData(text: msg));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'WhatsApp tidak bisa dibuka. Pesan disalin, tempel manual ya.',
+          ),
+        ),
+      );
+    }
+  }
+
+  Future<void> _load() async {
+    final db = AppDb.instance;
+    final customers = await db.customers();
+    await BackupStatus.instance.load(hasData: customers.isNotEmpty);
+    final txns = await db.allTxns();
+    final list = buildSummaries(customers, txns)
+      ..sort((a, b) {
+        final byBalance = b.balance.compareTo(a.balance);
+        return byBalance != 0
+            ? byBalance
+            : a.customer.name
+                .toLowerCase()
+                .compareTo(b.customer.name.toLowerCase());
+      });
+    if (!mounted) return;
+    setState(() {
+      _items = list;
+      _loading = false;
+    });
+  }
+
+  Future<Customer?> _createCustomer() async {
+    final c = await showCustomerForm(context);
+    if (c == null) return null;
+    final id = await AppDb.instance.insertCustomer(c);
+    return c.copyWith(id: id);
+  }
+                    decoration: const InputDecoration(
+                      prefixIcon: Icon(Icons.search),
+                      hintText: 'Cari pelanggan',
+                      border: OutlineInputBorder(),
+                      isDense: true,
+                    ),
+                    onChanged: (v) => setState(() => _query = v),
+                  ),
+                ),
+                Expanded(
+                  child: visible.isEmpty
+                      ? Center(
+                          child: Padding(
+                            padding: const EdgeInsets.all(32),
+                            child: Text(
+                              _items.isEmpty
+                                  ? 'Belum ada pelanggan.\nKetuk "Utang baru" untuk mulai mencatat.'
+                                  : 'Tidak ada pelanggan dengan nama itu.',
+                              textAlign: TextAlign.center,
+                            ),
+                          ),
+                        )
+                      : ListView.builder(
+                          padding: const EdgeInsets.only(bottom: 88),
+                          itemCount: visible.length,
+                          itemBuilder: (_, i) => _CustomerTile(
+                            summary: visible[i],
+                            onTap: () => _openCustomer(visible[i].customer),
+                            onTagih: () => _tagihCepat(visible[i]),
+                          ),
+                        ),
+                ),
+              ],
+            ),
+    );
+  }
+}
+
+class _SummaryCard extends StatelessWidget {
+  final int total;
+  final int telat;
+  final int mendekati;
+  const _SummaryCard({
+    required this.total,
+    required this.telat,
+    required this.mendekati,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      margin: const EdgeInsets.all(16),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Total piutang',
+                style: Theme.of(context).textTheme.labelLarge),
+            const SizedBox(height: 4),
+            Text(
+              rupiah(total),
+              style: Theme.of(context)
+                  .textTheme
+                  .headlineMedium
+                  ?.copyWith(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                _Badge(label: 'Telat', count: telat, color: kMerah),
+                const SizedBox(width: 12),
+                _Badge(
+                    label: 'Segera tempo', count: mendekati, color: kKuning),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _Badge extends StatelessWidget {
+  final String label;
+  final int count;
+  final Color color;
+  const _Badge({required this.label, required this.count, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withAlpha(35),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 10,
+            height: 10,
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+          ),
+          const SizedBox(width: 6),
+          Text('$label: $count',
+              style: const TextStyle(fontWeight: FontWeight.w600)),
+        ],
+      ),
+    );
+  }
+}
+
+class _CustomerTile extends StatelessWidget {
+  final CustomerSummary summary;
+  final VoidCallback onTap;
+  final VoidCallback onTagih;
+  const _CustomerTile({
+    required this.summary,
+    required this.onTap,
+    required this.onTagih,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final status = summary.status();
+    final color = statusColor(status);
+    final name = summary.customer.name;
+    return ListTile(
+      onTap: onTap,
+      leading: CircleAvatar(
+        backgroundColor: color.withAlpha(40),
+        foregroundColor: color,
+        child: Text(name.characters.first.toUpperCase()),
+      ),
+      title: Text(name, style: const TextStyle(fontWeight: FontWeight.w600)),
+      subtitle: Text(
+        statusText(summary) + (summary.overLimit ? ' • Melewati batas' : ''),
+        style: TextStyle(
+            color: status == DebtStatus.lunas ? null : color,
+            fontWeight: FontWeight.w500),
+      ),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (status == DebtStatus.telat ||
+              status == DebtStatus.mendekati)
+            IconButton(
+              tooltip: 'Tagih lewat WhatsApp',
+              icon: const Icon(Icons.chat_outlined),
+              color: color,
+              onPressed: onTagih,
+            ),
+          Text(
+            rupiah(summary.balance),
+            style: const TextStyle(
+                fontWeight: FontWeight.bold, fontSize: 16),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+===== 5. DATABASE: TITIK PERUBAHAN DATA =====
+68-    final db = await _database;
+69-    final rows = await db.query('customers', where: 'id = ?', whereArgs: [id]);
+70-    return rows.isEmpty ? null : Customer.fromMap(rows.first);
+71-  }
+72-
+73-  Future<int> insertCustomer(Customer c) async {
+74-    final db = await _database;
+75-    final id = await db.insert('customers', c.toMap());
+76:    BackupStatus.instance.markDirty();
+77-    return id;
+78-  }
+79-
+80-  Future<void> updateCustomer(Customer c) async {
+81-    final db = await _database;
+82-    await db.update('customers', c.toMap(), where: 'id = ?', whereArgs: [c.id]);
+83:    BackupStatus.instance.markDirty();
+84-  }
+85-
+86-  Future<void> deleteCustomer(int id) async {
+87-    final db = await _database;
+88-    await db.delete('transactions', where: 'customer_id = ?', whereArgs: [id]);
+89-    await db.delete('customers', where: 'id = ?', whereArgs: [id]);
+90:    BackupStatus.instance.markDirty();
+91-  }
+92-
+93-  Future<List<Txn>> allTxns() async {
+94-    final db = await _database;
+95-    final rows = await db.query('transactions');
+96-    return rows.map(Txn.fromMap).toList();
+97-  }
+98-
+99-  Future<List<Txn>> txnsFor(int customerId) async {
+100-    final db = await _database;
+--
+105-      orderBy: 'date ASC, id ASC',
+106-    );
+107-    return rows.map(Txn.fromMap).toList();
+108-  }
+109-
+110-  Future<int> insertTxn(Txn t) async {
+111-    final db = await _database;
+112-    final id = await db.insert('transactions', t.toMap());
+113:    BackupStatus.instance.markDirty();
+114-    return id;
+115-  }
+116-
+117-  Future<void> deleteTxn(int id) async {
+118-    final db = await _database;
+119-    await db.delete('transactions', where: 'id = ?', whereArgs: [id]);
+120:    BackupStatus.instance.markDirty();
+121-  }
+122-
+123-  // Membuat snapshot JSON tanpa mengubah database aktif.
+124-  Future<Map<String, Object?>> exportBackup() async {
+125-    final db = await _database;
+126-    return {
+127-      'format': backupFormat,
+128-      'version': backupVersion,
+129-      'exported_at': DateTime.now().toUtc().toIso8601String(),
+130-      'customers': await db.query('customers', orderBy: 'id ASC'),
+--
+223-        await txn.insert('customers', row);
+224-      }
+225-
+226-      for (final row in transactions) {
+227-        await txn.insert('transactions', row);
+228-      }
+229-    });
+230-
+231:    BackupStatus.instance.markDirty();
+232-  }
+233-}
+
+===== 6. APP LOCK SERVICE =====
+import 'dart:convert';
+import 'dart:math';
+import 'dart:typed_data';
+
+import 'package:cryptography/cryptography.dart';
+import 'package:flutter/foundation.dart';
+import 'package:local_auth/local_auth.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+enum PinResult { ok, wrong, locked }
+
+class PinCheck {
+  const PinCheck(this.result, {this.remainingAttempts = 0, this.wait});
+
+  final PinResult result;
+  final int remainingAttempts;
+  final Duration? wait;
+}
+
+/// Kunci aplikasi: PIN 4-6 angka (disimpan sebagai hash PBKDF2 + salt acak)
+/// dan opsi sidik jari / kunci layar lewat local_auth.
+class AppLockService {
+  AppLockService._();
+
+  static final AppLockService instance = AppLockService._();
+
+  static const int minPinLength = 4;
+  static const int maxPinLength = 6;
+  static const int maxFreeAttempts = 5;
+
+  static const int _iterations = 50000;
+
+  static const String _enabledKey = 'app_lock_enabled';
+  static const String _saltKey = 'app_lock_salt';
+  static const String _hashKey = 'app_lock_hash';
+  static const String _bioKey = 'app_lock_bio';
+  static const String _failsKey = 'app_lock_fails';
+  static const String _untilKey = 'app_lock_until';
+
+  final Pbkdf2 _kdf = Pbkdf2(
+    macAlgorithm: Hmac.sha256(),
+    iterations: _iterations,
+    bits: 256,
+  );
+
+  final LocalAuthentication _auth = LocalAuthentication();
+
+  bool _loaded = false;
+  bool _enabled = false;
+  bool _biometric = false;
+
+  bool get enabled => _enabled;
+  bool get biometricEnabled => _enabled && _biometric;
+
+  Future<void> load() async {
+    if (_loaded) return;
+
+    try {
+      final prefs = SharedPreferencesAsync();
+      _enabled = (await prefs.getBool(_enabledKey)) ?? false;
+      _biometric = (await prefs.getBool(_bioKey)) ?? false;
+
+      // Tanpa hash tersimpan, kunci tidak mungkin dibuka. Anggap mati.
+      if (_enabled && (await prefs.getString(_hashKey)) == null) {
+        _enabled = false;
+      }
+    } catch (e) {
+      debugPrint('Gagal memuat kunci aplikasi: $e');
+      _enabled = false;
+      _biometric = false;
+    }
+
+    _loaded = true;
+  }
+
+  Future<Uint8List> _hash(String pin, List<int> salt) async {
+    final key = await _kdf.deriveKeyFromPassword(password: pin, nonce: salt);
+    return Uint8List.fromList(await key.extractBytes());
+  }
+
+  bool _sameBytes(List<int> a, List<int> b) {
+    if (a.length != b.length) return false;
+    var diff = 0;
+    for (var i = 0; i < a.length; i++) {
+      diff |= a[i] ^ b[i];
+    }
+    return diff == 0;
+  }
+
+  Future<void> setPin(String pin) async {
+    if (!RegExp(r'^\d{4,6}$').hasMatch(pin)) {
+      throw ArgumentError('PIN harus 4 sampai 6 angka.');
+    }
+
+    final random = Random.secure();
+    final salt = Uint8List.fromList(
+      List<int>.generate(16, (_) => random.nextInt(256)),
+    );
+    final hash = await _hash(pin, salt);
+
+    final prefs = SharedPreferencesAsync();
+    await prefs.setString(_saltKey, base64Encode(salt));
+    await prefs.setString(_hashKey, base64Encode(hash));
+    await prefs.setBool(_enabledKey, true);
+    await prefs.setInt(_failsKey, 0);
+    await prefs.setInt(_untilKey, 0);
+
+    _enabled = true;
+    _loaded = true;
+  }
+
+  Future<Duration?> lockoutRemaining() async {
+    try {
+      final until = (await SharedPreferencesAsync().getInt(_untilKey)) ?? 0;
+      final now = DateTime.now().millisecondsSinceEpoch;
+      if (until <= now) return null;
+      return Duration(seconds: ((until - now) / 1000).ceil());
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<PinCheck> verifyPin(String pin) async {
+    final prefs = SharedPreferencesAsync();
+
+    final remaining = await lockoutRemaining();
+    if (remaining != null) return PinCheck(PinResult.locked, wait: remaining);
+
+    final saltText = await prefs.getString(_saltKey);
+    final hashText = await prefs.getString(_hashKey);
+    if (saltText == null || hashText == null) {
+      return const PinCheck(PinResult.wrong);
+    }
+
+    final actual = await _hash(pin, base64Decode(saltText));
+
+    if (_sameBytes(actual, base64Decode(hashText))) {
+      await prefs.setInt(_failsKey, 0);
+      await prefs.setInt(_untilKey, 0);
+      return const PinCheck(PinResult.ok);
+    }
+
+    final fails = ((await prefs.getInt(_failsKey)) ?? 0) + 1;
+    await prefs.setInt(_failsKey, fails);
+
+    if (fails % maxFreeAttempts == 0) {
+      // Jeda makin lama: 30 dtk, 60, 120, 240, 480, lalu maksimum 600 dtk.
+      final round = fails ~/ maxFreeAttempts;
+      final seconds = min(30 * pow(2, round - 1).toInt(), 600);
+      final until = DateTime.now().millisecondsSinceEpoch + seconds * 1000;
+      await prefs.setInt(_untilKey, until);
+      return PinCheck(PinResult.locked, wait: Duration(seconds: seconds));
+    }
+
+    return PinCheck(
+      PinResult.wrong,
+      remainingAttempts: maxFreeAttempts - (fails % maxFreeAttempts),
+    );
+  }
+
+  Future<void> disable() async {
+    try {
+      final prefs = SharedPreferencesAsync();
+      await prefs.setBool(_enabledKey, false);
+      await prefs.setBool(_bioKey, false);
+      await prefs.remove(_saltKey);
+      await prefs.remove(_hashKey);
+      await prefs.setInt(_failsKey, 0);
+      await prefs.setInt(_untilKey, 0);
+    } catch (e) {
+      debugPrint('Gagal mematikan kunci aplikasi: $e');
+    }
+
+    _enabled = false;
+    _biometric = false;
+  }
+
+  Future<void> setBiometric(bool value) async {
+    await SharedPreferencesAsync().setBool(_bioKey, value);
+    _biometric = value;
+  }
+
+  /// Ada sidik jari / wajah yang terdaftar di HP.
+  Future<bool> biometricAvailable() async {
+    try {
+      final types = await _auth.getAvailableBiometrics();
+      return types.isNotEmpty;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// [biometricOnly] false mengizinkan PIN / pola / kata sandi layar HP.
+  Future<bool> authenticate({
+    required String reason,
+    required bool biometricOnly,
+  }) async {
+    try {
+      return await _auth.authenticate(
+        localizedReason: reason,
+        biometricOnly: biometricOnly,
+        persistAcrossBackgrounding: true,
+      );
+    } catch (e) {
+      debugPrint('Autentikasi perangkat gagal: $e');
+      return false;
+    }
+  }
+}
+
+===== 7. APP LOCK GATE =====
+import 'package:flutter/material.dart';
+
+import '../screens/lock_screen.dart';
+import '../services/app_lock_service.dart';
+
+/// Membungkus seluruh app. Menampilkan layar kunci saat app dibuka, dan saat
+/// kembali dari latar belakang setelah lebih dari [_grace].
+class AppLockGate extends StatefulWidget {
+  const AppLockGate({super.key, required this.child});
+
+  final Widget child;
+
+  @override
+  State<AppLockGate> createState() => _AppLockGateState();
+}
+
+class _AppLockGateState extends State<AppLockGate> with WidgetsBindingObserver {
+  // Pemilih akun Google dan pemilih file bisa membuat app ke latar belakang
+  // sebentar. Jeda ini mencegah app terkunci di tengah proses itu.
+  static const Duration _grace = Duration(seconds: 60);
+
+  bool _ready = false;
+  bool _locked = false;
+  DateTime? _leftAt;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _init();
   }
 
   @override
   void dispose() {
-    BackupStatus.instance.localDirty.removeListener(_onChanged);
-    BackupStatus.instance.driveDirty.removeListener(_onChanged);
-    _timer?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
 
-  bool get _anyDirty =>
-      BackupStatus.instance.localDirty.value == true ||
-      BackupStatus.instance.driveDirty.value == true;
-
-  void _onChanged() {
-    _syncTimer();
-    if (mounted) setState(() {});
+  Future<void> _init() async {
+    await AppLockService.instance.load();
+    if (!mounted) return;
+    setState(() {
+      _locked = AppLockService.instance.enabled;
+      _ready = true;
+    });
   }
 
-  void _syncTimer() {
-    if (_anyDirty && _timer == null) {
-      _timer = Timer.periodic(const Duration(milliseconds: 600), (_) {
-        if (mounted) setState(() => _alt = !_alt);
-      });
-    } else if (!_anyDirty && _timer != null) {
-      _timer!.cancel();
-      _timer = null;
-      _alt = false;
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.hidden) {
+      _leftAt ??= DateTime.now();
+      return;
     }
-  }
 
-  String _describe(bool? state) {
-    if (state == null) return 'belum diketahui';
-    return state ? 'ada perubahan belum di-backup' : 'sudah di-backup';
-  }
+    if (state == AppLifecycleState.resumed) {
+      final left = _leftAt;
+      _leftAt = null;
 
-  Color _colorFor(bool? state) {
-    if (state == null) return Colors.grey;
-    if (state) return _alt ? Colors.blue : Colors.red;
-    return Colors.green;
-  }
+      if (left == null || !_ready || _locked) return;
+      if (!AppLockService.instance.enabled) return;
 
-  Widget _item(IconData icon, bool? state) {
-    final color = _colorFor(state);
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(icon, size: 18),
-        const SizedBox(width: 4),
-        AnimatedContainer(
-          duration: const Duration(milliseconds: 250),
-          width: 12,
-          height: 12,
-          decoration: BoxDecoration(
-            color: color,
-            shape: BoxShape.circle,
-            boxShadow: [
-              BoxShadow(
-                color: color.withOpacity(0.5),
-                blurRadius: 5,
-                spreadRadius: 1,
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
+      if (DateTime.now().difference(left) >= _grace) {
+        setState(() => _locked = true);
+      }
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final local = BackupStatus.instance.localDirty.value;
-    final drive = BackupStatus.instance.driveDirty.value;
+    final hidden = !_ready || _locked;
 
-    // Status belum diketahui: jangan tampilkan apa pun supaya tidak salah.
-    if (local == null && drive == null) return const SizedBox.shrink();
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        ExcludeSemantics(excluding: hidden, child: widget.child),
+        if (!_ready)
+          Positioned.fill(
+            child: ColoredBox(
+              color: Theme.of(context).scaffoldBackgroundColor,
+            ),
+          )
+        else if (_locked)
+          Positioned.fill(
+            child: LockScreen(
+              key: const ValueKey('app-lock-screen'),
+              onUnlocked: () => setState(() => _locked = false),
+            ),
+          ),
+      ],
+    );
+  }
+}
 
-    return Tooltip(
-      message: 'Backup lokal: ${_describe(local)}\n'
-          'Backup Google Drive: ${_describe(drive)}',
-      child: InkWell(
-        onTap: widget.onTap,
-        borderRadius: BorderRadius.circular(20),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _item(Icons.smartphone, local),
-              const SizedBox(width: 10),
-              _item(Icons.cloud_outlined, drive),
-            ],
+===== 8. LOCK SCREEN =====
+import 'dart:async';
+
+import 'package:flutter/material.dart';
+
+import '../services/app_lock_service.dart';
+import '../widgets/pin_pad.dart';
+
+/// Layar kunci yang menutupi seluruh app sampai PIN / sidik jari benar.
+class LockScreen extends StatefulWidget {
+  const LockScreen({super.key, required this.onUnlocked});
+
+  final VoidCallback onUnlocked;
+
+  @override
+  State<LockScreen> createState() => _LockScreenState();
+}
+
+class _LockScreenState extends State<LockScreen> {
+  final AppLockService _lock = AppLockService.instance;
+
+  String _pin = '';
+  String? _message;
+  bool _busy = false;
+  bool _resetPending = false;
+  Duration? _wait;
+  Timer? _ticker;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkLockout();
+
+    if (_lock.biometricEnabled) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _useBiometric());
+    }
+  }
+
+  @override
+  void dispose() {
+    _ticker?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _checkLockout() async {
+    final remaining = await _lock.lockoutRemaining();
+    if (remaining != null && mounted) _startWait(remaining);
+  }
+
+  void _startWait(Duration duration) {
+    _ticker?.cancel();
+
+    setState(() {
+      _wait = duration;
+      _busy = false;
+      _pin = '';
+      _message = null;
+    });
+
+    _ticker = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+
+      final current = _wait;
+      if (current == null) {
+        timer.cancel();
+        return;
+      }
+
+      final next = current - const Duration(seconds: 1);
+      if (next <= Duration.zero) {
+        timer.cancel();
+        setState(() => _wait = null);
+      } else {
+        setState(() => _wait = next);
+      }
+    });
+  }
+
+  Future<void> _useBiometric() async {
+    if (!mounted || _busy || _wait != null) return;
+
+    setState(() => _busy = true);
+
+    final ok = await _lock.authenticate(
+      reason: 'Buka Buku Utang Warung',
+      biometricOnly: true,
+    );
+
+    if (!mounted) return;
+
+    if (ok) {
+      widget.onUnlocked();
+    } else {
+      setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _submit() async {
+    if (_busy || _wait != null) return;
+    if (_pin.length < AppLockService.minPinLength) return;
+
+    setState(() => _busy = true);
+
+    final check = await _lock.verifyPin(_pin);
+
+    if (!mounted) return;
+
+    switch (check.result) {
+      case PinResult.ok:
+        widget.onUnlocked();
+        break;
+      case PinResult.locked:
+        _startWait(check.wait ?? const Duration(seconds: 30));
+        break;
+      case PinResult.wrong:
+        setState(() {
+          _busy = false;
+          _pin = '';
+          _message = 'PIN salah. Sisa percobaan: ${check.remainingAttempts}';
+        });
+        break;
+    }
+  }
+
+  Future<void> _forgotPin() async {
+    if (_busy) return;
+
+    setState(() {
+      _busy = true;
+      _message = null;
+    });
+
+    final ok = await _lock.authenticate(
+      reason: 'Verifikasi dengan kunci layar HP untuk mereset PIN',
+      biometricOnly: false,
+    );
+
+    if (!mounted) return;
+
+    setState(() {
+      _busy = false;
+      if (ok) {
+        _resetPending = true;
+      } else {
+        _message = 'Verifikasi kunci layar gagal atau dibatalkan. '
+            'HP harus punya kunci layar (PIN, pola, atau kata sandi).';
+      }
+    });
+  }
+
+  Future<void> _disableAndContinue() async {
+    await _lock.disable();
+    widget.onUnlocked();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    final Widget content;
+
+    if (_resetPending) {
+      content = Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Text(
+            'Kunci layar HP terverifikasi.\n\n'
+            'Kunci aplikasi akan dimatikan. Kamu bisa membuat PIN baru di '
+            'Pengaturan. Data tidak dihapus.',
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 24),
+          FilledButton(
+            onPressed: _disableAndContinue,
+            child: const Text('Matikan kunci dan lanjut'),
+          ),
+          TextButton(
+            onPressed: () => setState(() => _resetPending = false),
+            child: const Text('Batal'),
+          ),
+        ],
+      );
+    } else {
+      final wait = _wait;
+
+      content = Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            wait != null
+                ? 'Terlalu banyak percobaan salah.\n'
+                    'Coba lagi dalam ${wait.inSeconds} detik.'
+                : 'Masukkan PIN',
+            textAlign: TextAlign.center,
+            style: theme.textTheme.titleMedium,
+          ),
+          SizedBox(
+            height: 40,
+            child: Center(
+              child: _message == null
+                  ? null
+                  : Text(
+                      _message!,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: theme.colorScheme.error),
+                    ),
+            ),
+          ),
+          PinPad(
+            pin: _pin,
+            enabled: !_busy && wait == null,
+            onChanged: (value) => setState(() {
+              _pin = value;
+              _message = null;
+            }),
+            onSubmit: _submit,
+            onBiometric: _lock.biometricEnabled ? _useBiometric : null,
+          ),
+          const SizedBox(height: 8),
+          TextButton(
+            onPressed: _busy ? null : _forgotPin,
+            child: const Text('Lupa PIN?'),
+          ),
+        ],
+      );
+    }
+
+    return Scaffold(
+      body: SafeArea(
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.lock_outline, size: 48, color: theme.colorScheme.primary),
+                const SizedBox(height: 12),
+                Text(
+                  'Buku Utang Warung',
+                  style: theme.textTheme.headlineSmall,
+                ),
+                const SizedBox(height: 24),
+                content,
+              ],
+            ),
           ),
         ),
       ),
@@ -341,601 +981,625 @@ class _BackupIndicatorState extends State<BackupIndicator> {
   }
 }
 
-===== 6. PEMANGGILAN INDIKATOR DI HOME =====
-157-
-158-    return Scaffold(
-159-      appBar: AppBar(
-160-        title: const Text('Buku Utang Warung'),
-161-        actions: [
-162:          BackupIndicator(onTap: _openSettings),
-163-          IconButton(
-164-            tooltip: 'Pengaturan',
-165-            icon: const Icon(Icons.settings_outlined),
-166-            onPressed: () async {
-167-              await Navigator.push(
+===== 9. PIN SCREEN =====
+import 'package:flutter/material.dart';
 
-===== 7. PEMANGGILAN STATUS SAAT DATA BERUBAH =====
-lib/db.dart:76:    BackupStatus.instance.markDirty();
-lib/db.dart:83:    BackupStatus.instance.markDirty();
-lib/db.dart:90:    BackupStatus.instance.markDirty();
-lib/db.dart:113:    BackupStatus.instance.markDirty();
-lib/db.dart:120:    BackupStatus.instance.markDirty();
-lib/db.dart:231:    BackupStatus.instance.markDirty();
-lib/screens/settings_screen.dart:171:        await BackupStatus.instance.markLocalBackedUp(revision);
-lib/screens/settings_screen.dart:366:      await BackupStatus.instance.markBackedUp(revision);
-lib/services/backup_status.dart:54:  void markDirty() {
-lib/services/backup_status.dart:64:  Future<void> markDriveBackedUp(int revision) async {
-lib/services/backup_status.dart:71:  Future<void> markLocalBackedUp(int revision) async {
-lib/services/backup_status.dart:78:  Future<void> markBackedUp(int revision) => markDriveBackedUp(revision);
+import '../services/app_lock_service.dart';
+import '../widgets/pin_pad.dart';
 
-===== 8. FITUR WHATSAPP DAN KUNCI =====
-41:  Future<void> _tagihCepat(CustomerSummary s) async {
-44:    final cycle = activeDebtCycle(txns);
-45:    final msg = buildReminder(
-55:        waUri(c.phone, msg),
-228:                            onTagih: () => _tagihCepat(visible[i]),
-317:  final VoidCallback onTagih;
-321:    required this.onTagih,
-352:              onPressed: onTagih,
-ADA: lib/services/app_lock_service.dart
-ADA: lib/widgets/app_lock_gate.dart
-ADA: lib/widgets/app_lock_settings_card.dart
-ADA: lib/widgets/pin_pad.dart
-ADA: lib/screens/lock_screen.dart
-ADA: lib/screens/pin_screen.dart
+enum PinMode { create, verify }
 
-===== 9. DEPENDENSI =====
-14:  url_launcher: ^6.3.0
-16:  local_auth: ^3.0.0
-21:  cryptography: ^2.7.0
-22:  shared_preferences: 2.3.1
+/// Layar PIN untuk Pengaturan.
+/// create: minta PIN dua kali, hasilnya (String) dikembalikan lewat pop.
+/// verify: cek PIN saat ini, hasilnya true dikembalikan lewat pop.
+class PinScreen extends StatefulWidget {
+  const PinScreen({super.key, required this.mode, required this.title});
 
-===== 10. DIFF FILE TERKAIT DARI GITHUB =====
- .github/workflows/build-apk.yml   |  45 +++++++++++++++++
- lib/main.dart                     |   3 ++
- lib/screens/home_screen.dart      |  63 +++++++++++++++++++++--
- lib/screens/settings_screen.dart  |   5 ++
- lib/services/backup_status.dart   |  60 ++++++++++++++--------
- lib/widgets/backup_indicator.dart | 104 +++++++++++++++++++++++++-------------
- pubspec.yaml                      |   1 +
- 7 files changed, 223 insertions(+), 58 deletions(-)
+  final PinMode mode;
+  final String title;
 
-diff --git a/.github/workflows/build-apk.yml b/.github/workflows/build-apk.yml
-index 36d0902..1ff3d8b 100644
---- a/.github/workflows/build-apk.yml
-+++ b/.github/workflows/build-apk.yml
-@@ -48,6 +48,51 @@ jobs:
-           sed -i 's/android:label="[^"]*"/android:label="Buku Utang Warung"/' \
-             android/app/src/main/AndroidManifest.xml
- 
-+      # Siapkan Android untuk sidik jari (local_auth)
-+      - name: Konfigurasi Android untuk kunci aplikasi
-+        run: |
-+          set -euo pipefail
-+
-+          python3 - <<'PY'
-+          from pathlib import Path
-+          import re
-+
-+          kt_files = list(Path("android/app/src/main").rglob("MainActivity.kt"))
-+          if len(kt_files) != 1:
-+              raise SystemExit("MainActivity.kt tidak ditemukan atau ambigu")
-+
-+          kt = kt_files[0]
-+          kt_text = kt.read_text()
-+          if "FlutterFragmentActivity" not in kt_text:
-+              if "FlutterActivity" not in kt_text:
-+                  raise SystemExit("MainActivity.kt tidak memakai FlutterActivity")
-+              kt.write_text(kt_text.replace("FlutterActivity", "FlutterFragmentActivity"))
-+
-+          manifest = Path("android/app/src/main/AndroidManifest.xml")
-+          m = manifest.read_text()
-+          perm = '<uses-permission android:name="android.permission.USE_BIOMETRIC"/>'
-+          if perm not in m:
-+              if m.count("<application") != 1:
-+                  raise SystemExit("Tag application tidak ditemukan atau ambigu")
-+              m = m.replace("<application", perm + "\n    <application", 1)
-+              manifest.write_text(m)
-+
-+          for rel in ("values/styles.xml", "values-night/styles.xml"):
-+              p = Path("android/app/src/main/res") / rel
-+              if not p.is_file():
-+                  continue
-+              s = p.read_text()
-+              s2 = re.sub(
-+                  r'(<style name="LaunchTheme" parent=")[^"]*(")',
-+                  r'\1Theme.AppCompat.DayNight.NoActionBar\2',
-+                  s,
-+              )
-+              if s2 != s:
-+                  p.write_text(s2)
-+
-+          print("Android siap untuk kunci aplikasi")
-+          PY
-+
-       # Siapkan keystore dari GitHub Secrets
-       - name: Siapkan keystore
-         env:
-diff --git a/lib/main.dart b/lib/main.dart
-index ee1622d..0c36bd1 100644
---- a/lib/main.dart
-+++ b/lib/main.dart
-@@ -1,6 +1,7 @@
- import 'package:flutter/material.dart';
- 
- import 'screens/home_screen.dart';
-+import 'widgets/app_lock_gate.dart';
- 
- void main() {
-   WidgetsFlutterBinding.ensureInitialized();
-@@ -20,6 +21,8 @@ class BukuUtangApp extends StatelessWidget {
-         colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF2E7D32)),
-         visualDensity: VisualDensity.standard,
-       ),
-+      builder: (context, child) =>
-+          AppLockGate(child: child ?? const SizedBox.shrink()),
-       home: const HomeScreen(),
-     );
-   }
-diff --git a/lib/screens/home_screen.dart b/lib/screens/home_screen.dart
-index 336b168..09f88a9 100644
---- a/lib/screens/home_screen.dart
-+++ b/lib/screens/home_screen.dart
-@@ -1,4 +1,6 @@
- import 'package:flutter/material.dart';
-+import 'package:flutter/services.dart';
-+import 'package:url_launcher/url_launcher.dart';
- 
- import '../db.dart';
- import '../dialogs.dart';
-@@ -36,6 +38,39 @@ class _HomeScreenState extends State<HomeScreen> {
-     await _load();
-   }
- 
-+  Future<void> _tagihCepat(CustomerSummary s) async {
-+    final c = s.customer;
-+    final txns = await AppDb.instance.txnsFor(c.id!);
-+    final cycle = activeDebtCycle(txns);
-+    final msg = buildReminder(
-+      name: c.name,
-+      balance: computeBalance(txns),
-+      due: nextDueDate(cycle),
-+      txns: cycle,
-+    );
-+
-+    bool ok;
-+    try {
-+      ok = await launchUrl(
-+        waUri(c.phone, msg),
-+        mode: LaunchMode.externalApplication,
-+      );
-+    } catch (_) {
-+      ok = false;
-+    }
-+
-+    if (!ok && mounted) {
-+      await Clipboard.setData(ClipboardData(text: msg));
-+      ScaffoldMessenger.of(context).showSnackBar(
-+        const SnackBar(
-+          content: Text(
-+            'WhatsApp tidak bisa dibuka. Pesan disalin, tempel manual ya.',
-+          ),
-+        ),
-+      );
-+    }
-+  }
-+
-   Future<void> _load() async {
-     final db = AppDb.instance;
-     final customers = await db.customers();
-@@ -190,6 +225,7 @@ class _HomeScreenState extends State<HomeScreen> {
-                           itemBuilder: (_, i) => _CustomerTile(
-                             summary: visible[i],
-                             onTap: () => _openCustomer(visible[i].customer),
-+                            onTagih: () => _tagihCepat(visible[i]),
-                           ),
-                         ),
-                 ),
-@@ -278,7 +314,12 @@ class _Badge extends StatelessWidget {
- class _CustomerTile extends StatelessWidget {
-   final CustomerSummary summary;
-   final VoidCallback onTap;
--  const _CustomerTile({required this.summary, required this.onTap});
-+  final VoidCallback onTagih;
-+  const _CustomerTile({
-+    required this.summary,
-+    required this.onTap,
-+    required this.onTagih,
-+  });
- 
-   @override
-   Widget build(BuildContext context) {
-@@ -299,9 +340,23 @@ class _CustomerTile extends StatelessWidget {
-             color: status == DebtStatus.lunas ? null : color,
-             fontWeight: FontWeight.w500),
-       ),
--      trailing: Text(
--        rupiah(summary.balance),
--        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-+      trailing: Row(
-+        mainAxisSize: MainAxisSize.min,
-+        children: [
-+          if (status == DebtStatus.telat ||
-+              status == DebtStatus.mendekati)
-+            IconButton(
-+              tooltip: 'Tagih lewat WhatsApp',
-+              icon: const Icon(Icons.chat_outlined),
-+              color: color,
-+              onPressed: onTagih,
-+            ),
-+          Text(
-+            rupiah(summary.balance),
-+            style: const TextStyle(
-+                fontWeight: FontWeight.bold, fontSize: 16),
-+          ),
-+        ],
-       ),
-     );
-   }
-diff --git a/lib/screens/settings_screen.dart b/lib/screens/settings_screen.dart
-index 584f9f0..53b35d8 100644
---- a/lib/screens/settings_screen.dart
-+++ b/lib/screens/settings_screen.dart
-@@ -10,6 +10,7 @@ import '../db.dart';
- import '../services/backup_crypto_service.dart';
- import '../services/backup_status.dart';
- import '../services/google_drive_service.dart';
-+import '../widgets/app_lock_settings_card.dart';
- 
- class SettingsScreen extends StatefulWidget {
-   const SettingsScreen({super.key});
-@@ -149,6 +150,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
-     setState(() => _busy = true);
- 
-     try {
-+      final revision = BackupStatus.instance.revision;
-       final data = await AppDb.instance.exportBackup();
-       final json = const JsonEncoder.withIndent('  ').convert(data);
-       final now = DateTime.now();
-@@ -166,6 +168,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
-       );
- 
-       if (result != null) {
-+        await BackupStatus.instance.markLocalBackedUp(revision);
-         _message('File backup berhasil disimpan.');
-       }
-     } catch (e) {
-@@ -540,6 +543,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
-             ),
-           ),
-           const SizedBox(height: 12),
-+          const AppLockSettingsCard(),
-+          const SizedBox(height: 12),
-           Card(
-             child: Padding(
-               padding: const EdgeInsets.all(16),
-diff --git a/lib/services/backup_status.dart b/lib/services/backup_status.dart
-index b415e71..6136a57 100644
---- a/lib/services/backup_status.dart
-+++ b/lib/services/backup_status.dart
-@@ -3,24 +3,28 @@ import 'dart:async';
- import 'package:flutter/foundation.dart';
- import 'package:shared_preferences/shared_preferences.dart';
- 
--/// Melacak apakah ada perubahan data yang belum di-backup ke Google Drive.
-+/// Melacak apakah ada perubahan data yang belum di-backup, terpisah untuk
-+/// backup lokal (file di HP) dan Google Drive.
- ///
--/// [dirty]: null = belum diketahui, true = ada perubahan belum di-backup,
--/// false = data sudah di-backup.
-+/// Nilai notifier: null = belum diketahui, true = ada perubahan belum
-+/// di-backup, false = sudah di-backup.
- class BackupStatus {
-   BackupStatus._();
- 
-   static final BackupStatus instance = BackupStatus._();
- 
--  static const String _dirtyKey = 'backup_dirty';
-+  // Kunci lama dipertahankan untuk Google Drive agar status lama tidak hilang.
-+  static const String _driveKey = 'backup_dirty';
-+  static const String _localKey = 'backup_local_dirty';
- 
--  final ValueNotifier<bool?> dirty = ValueNotifier<bool?>(null);
-+  final ValueNotifier<bool?> driveDirty = ValueNotifier<bool?>(null);
-+  final ValueNotifier<bool?> localDirty = ValueNotifier<bool?>(null);
- 
-   bool _loaded = false;
-   int _revision = 0;
- 
-   /// Naik setiap data berubah. Dipakai agar perubahan yang terjadi saat
--  /// upload berlangsung tidak ikut dianggap sudah ter-backup.
-+  /// backup berlangsung tidak ikut dianggap sudah ter-backup.
-   int get revision => _revision;
- 
-   /// Dipanggil sekali saat app dibuka. Panggilan berikutnya diabaikan.
-@@ -29,37 +33,53 @@ class BackupStatus {
-     _loaded = true;
- 
-     try {
--      final stored = await SharedPreferencesAsync().getBool(_dirtyKey);
-+      final prefs = SharedPreferencesAsync();
-+      final drive = await prefs.getBool(_driveKey);
-+      final local = await prefs.getBool(_localKey);
- 
-       // Pertama kali: kalau sudah ada data tapi belum pernah di-backup,
-       // anggap belum ter-backup. Kalau masih kosong, anggap aman.
--      final value = stored ?? hasData;
-+      driveDirty.value ??= drive ?? hasData;
-+      localDirty.value ??= local ?? hasData;
- 
--      if (dirty.value == null) dirty.value = value;
--      if (stored == null) await _persist(value);
-+      if (drive == null) await _persist(_driveKey, driveDirty.value ?? hasData);
-+      if (local == null) await _persist(_localKey, localDirty.value ?? hasData);
-     } catch (e) {
-       debugPrint('Gagal memuat status backup: $e');
--      dirty.value ??= hasData;
-+      driveDirty.value ??= hasData;
-+      localDirty.value ??= hasData;
-     }
-   }
- 
-   void markDirty() {
-     _revision++;
--    dirty.value = true;
--    unawaited(_persist(true));
-+    driveDirty.value = true;
-+    localDirty.value = true;
-+    unawaited(_persist(_driveKey, true));
-+    unawaited(_persist(_localKey, true));
-   }
- 
--  /// Tandai sudah ter-backup, hanya jika data tidak berubah sejak [revision]
--  /// dicatat (sebelum backup dibuat).
--  Future<void> markBackedUp(int revision) async {
-+  /// Tandai Google Drive sudah ter-backup, hanya jika data tidak berubah
-+  /// sejak [revision] dicatat (sebelum backup dibuat).
-+  Future<void> markDriveBackedUp(int revision) async {
-     if (revision != _revision) return;
--    dirty.value = false;
--    await _persist(false);
-+    driveDirty.value = false;
-+    await _persist(_driveKey, false);
-   }
- 
--  Future<void> _persist(bool value) async {
-+  /// Sama seperti [markDriveBackedUp], untuk backup file lokal.
-+  Future<void> markLocalBackedUp(int revision) async {
-+    if (revision != _revision) return;
-+    localDirty.value = false;
-+    await _persist(_localKey, false);
-+  }
-+
-+  /// Nama lama, tetap dipakai oleh alur backup Google Drive.
-+  Future<void> markBackedUp(int revision) => markDriveBackedUp(revision);
-+
-+  Future<void> _persist(String key, bool value) async {
-     try {
--      await SharedPreferencesAsync().setBool(_dirtyKey, value);
-+      await SharedPreferencesAsync().setBool(key, value);
-     } catch (e) {
-       debugPrint('Gagal menyimpan status backup: $e');
-     }
-diff --git a/lib/widgets/backup_indicator.dart b/lib/widgets/backup_indicator.dart
-index ea524af..8a396c7 100644
---- a/lib/widgets/backup_indicator.dart
-+++ b/lib/widgets/backup_indicator.dart
-@@ -4,8 +4,8 @@ import 'package:flutter/material.dart';
- 
- import '../services/backup_status.dart';
- 
--/// Bulatan status backup untuk AppBar.
--/// Merah/biru bergantian = belum di-backup. Hijau = sudah di-backup.
-+/// Dua bulatan status di AppBar: ikon HP = backup lokal, ikon awan = Google
-+/// Drive. Merah/biru bergantian = belum di-backup. Hijau = sudah di-backup.
- class BackupIndicator extends StatefulWidget {
-   const BackupIndicator({super.key, this.onTap});
- 
-@@ -22,66 +22,102 @@ class _BackupIndicatorState extends State<BackupIndicator> {
-   @override
-   void initState() {
-     super.initState();
--    BackupStatus.instance.dirty.addListener(_onChanged);
-+    BackupStatus.instance.localDirty.addListener(_onChanged);
-+    BackupStatus.instance.driveDirty.addListener(_onChanged);
-     _syncTimer();
-   }
- 
-   @override
-   void dispose() {
--    BackupStatus.instance.dirty.removeListener(_onChanged);
-+    BackupStatus.instance.localDirty.removeListener(_onChanged);
-+    BackupStatus.instance.driveDirty.removeListener(_onChanged);
-     _timer?.cancel();
-     super.dispose();
-   }
- 
-+  bool get _anyDirty =>
-+      BackupStatus.instance.localDirty.value == true ||
-+      BackupStatus.instance.driveDirty.value == true;
-+
-   void _onChanged() {
-     _syncTimer();
-     if (mounted) setState(() {});
-   }
- 
-   void _syncTimer() {
--    final isDirty = BackupStatus.instance.dirty.value == true;
--
--    if (isDirty && _timer == null) {
-+    if (_anyDirty && _timer == null) {
-       _timer = Timer.periodic(const Duration(milliseconds: 600), (_) {
-         if (mounted) setState(() => _alt = !_alt);
-       });
--    } else if (!isDirty && _timer != null) {
-+    } else if (!_anyDirty && _timer != null) {
-       _timer!.cancel();
-       _timer = null;
-       _alt = false;
-     }
-   }
- 
-+  String _describe(bool? state) {
-+    if (state == null) return 'belum diketahui';
-+    return state ? 'ada perubahan belum di-backup' : 'sudah di-backup';
-+  }
-+
-+  Color _colorFor(bool? state) {
-+    if (state == null) return Colors.grey;
-+    if (state) return _alt ? Colors.blue : Colors.red;
-+    return Colors.green;
-+  }
-+
-+  Widget _item(IconData icon, bool? state) {
-+    final color = _colorFor(state);
-+    return Row(
-+      mainAxisSize: MainAxisSize.min,
-+      children: [
-+        Icon(icon, size: 18),
-+        const SizedBox(width: 4),
-+        AnimatedContainer(
-+          duration: const Duration(milliseconds: 250),
-+          width: 12,
-+          height: 12,
-+          decoration: BoxDecoration(
-+            color: color,
-+            shape: BoxShape.circle,
-+            boxShadow: [
-+              BoxShadow(
-+                color: color.withOpacity(0.5),
-+                blurRadius: 5,
-+                spreadRadius: 1,
-+              ),
-+            ],
-+          ),
-+        ),
-+      ],
-+    );
-+  }
-+
-   @override
-   Widget build(BuildContext context) {
--    final state = BackupStatus.instance.dirty.value;
-+    final local = BackupStatus.instance.localDirty.value;
-+    final drive = BackupStatus.instance.driveDirty.value;
- 
-     // Status belum diketahui: jangan tampilkan apa pun supaya tidak salah.
--    if (state == null) return const SizedBox.shrink();
--
--    final Color color = state
--        ? (_alt ? Colors.blue : Colors.red)
--        : Colors.green;
--
--    return IconButton(
--      tooltip: state
--          ? 'Ada perubahan yang belum di-backup ke Google Drive'
--          : 'Data sudah di-backup ke Google Drive',
--      onPressed: widget.onTap,
--      icon: AnimatedContainer(
--        duration: const Duration(milliseconds: 250),
--        width: 16,
--        height: 16,
--        decoration: BoxDecoration(
--          color: color,
--          shape: BoxShape.circle,
--          boxShadow: [
--            BoxShadow(
--              color: color.withOpacity(0.5),
--              blurRadius: 6,
--              spreadRadius: 1,
--            ),
--          ],
-+    if (local == null && drive == null) return const SizedBox.shrink();
-+
-+    return Tooltip(
-+      message: 'Backup lokal: ${_describe(local)}\n'
-+          'Backup Google Drive: ${_describe(drive)}',
-+      child: InkWell(
-+        onTap: widget.onTap,
-+        borderRadius: BorderRadius.circular(20),
-+        child: Padding(
-+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-+          child: Row(
-+            mainAxisSize: MainAxisSize.min,
-+            children: [
-+              _item(Icons.smartphone, local),
-+              const SizedBox(width: 10),
-+              _item(Icons.cloud_outlined, drive),
-+            ],
-+          ),
-         ),
-       ),
-     );
-diff --git a/pubspec.yaml b/pubspec.yaml
-index 90d41c3..5935567 100644
---- a/pubspec.yaml
-+++ b/pubspec.yaml
-@@ -13,6 +13,7 @@ dependencies:
-   path: ^1.9.0
-   url_launcher: ^6.3.0
-   file_picker: ^12.3.0
-+  local_auth: ^3.0.0
- 
-   google_sign_in: ^7.2.0
-   googleapis: ^19.0.0
+  @override
+  State<PinScreen> createState() => _PinScreenState();
+}
 
-===== 11. FILE BARU YANG BELUM DILACAK GIT =====
-add_backup_indicator.sh
-backup_before_revert_lightweight_20261115_133121/google_drive_service.dart
-backup_cloud_reconnect_20261115_133235/settings_screen.dart
-backup_diagnostik_google_20261115_111942/google_drive_service.dart
-backup_diagnostik_google_20261115_111942/settings_screen.dart
-backup_fix_google_import_20261115_104148/settings_screen.dart
-backup_google_login_20261114_185251/settings_screen.dart
-backup_google_restore_20261115_132224/google_drive_service.dart
-backup_google_session_20261115_102650/google_drive_service.dart
-backup_google_session_20261115_102650/settings_screen.dart
-backup_google_session_fix_20261115_123805/pubspec.yaml
-backup_google_session_fix_20261115_124655/lib/screens/settings_screen.dart
-backup_google_session_fix_20261115_124655/lib/services/google_drive_service.dart
-backup_google_session_fix_20261115_124655/pubspec.yaml
-backup_listener_google_20261115_125040/settings_screen.dart
-backup_sebelum_cloud_ui_20261114_225058/settings_screen.dart
-backup_sebelum_cloud_ui_20261114_225846/settings_screen.dart
-backup_sebelum_fix_sqlite_20261114_231957/pubspec.yaml
-backup_sebelum_google_20261114_184301/pubspec.yaml
-backup_sebelum_integrasi_drive_20261114_221515/lib/services/google_drive_service.dart
-backup_sebelum_pin_ffi_20261114_230953/pubspec.yaml
-backup_sebelum_pin_shared_preferences_20261115_124930/pubspec.yaml
-backup_sebelum_settings_20261114_164203/db.dart
-backup_sebelum_settings_20261114_164203/home_screen.dart
-backup_sebelum_settings_20261114_164203/pubspec.yaml
-backup_sebelum_test_restore_20261114_230544/db.dart
-backup_sebelum_test_restore_20261114_230544/models.dart
-backup_sebelum_update_siklus/20261114_160730/lib/models.dart
-backup_sebelum_update_siklus/20261114_160730/lib/screens/customer_screen.dart
-backup_sebelum_update_siklus/20261114_160730/lib/utils.dart
-backup_sebelum_update_siklus/penyempurnaan_20261114_161231/customer_screen.dart
-backup_sebelum_update_siklus/penyempurnaan_20261114_161231/utils.dart
-backup_status_google_20261114_192221/google_drive_service.dart
-backup_status_google_20261114_192221/settings_screen.dart
-fix_diag.sh
-fix_google_session.sh
-fix_ux.sh
-lib/screens/lock_screen.dart
-lib/screens/pin_screen.dart
-lib/services/app_lock_service.dart
-lib/widgets/app_lock_gate.dart
-lib/widgets/app_lock_settings_card.dart
-lib/widgets/pin_pad.dart
-patch_google_session.py
-patchv3.py
-tambah_fitur.sh
+class _PinScreenState extends State<PinScreen> {
+  String _pin = '';
+  String? _first;
+  String? _message;
+  bool _busy = false;
 
-===== 12. PEMERIKSAAN PATCH =====
+  String get _prompt {
+    if (widget.mode == PinMode.verify) return 'Masukkan PIN saat ini';
+    return _first == null ? 'Buat PIN (4-6 angka)' : 'Ulangi PIN';
+  }
 
-===== 13. SCRIPT TAMBAH FITUR =====
--rw-rw----. 1 u0_a523 u0_a523 45286 Nov 16 19:34 tambah_fitur.sh
-d58a0bbcebcc93dd3f8e364b4d4fa012b80844e37edfdc78f00b444c7ecc7178  tambah_fitur.sh
+  Future<void> _submit() async {
+    if (_busy || _pin.length < AppLockService.minPinLength) return;
+
+    if (widget.mode == PinMode.create) {
+      if (_first == null) {
+        setState(() {
+          _first = _pin;
+          _pin = '';
+          _message = null;
+        });
+        return;
+      }
+
+      if (_first == _pin) {
+        Navigator.pop(context, _pin);
+      } else {
+        setState(() {
+          _first = null;
+          _pin = '';
+          _message = 'PIN tidak sama. Ulangi dari awal.';
+        });
+      }
+      return;
+    }
+
+    setState(() => _busy = true);
+
+    final check = await AppLockService.instance.verifyPin(_pin);
+
+    if (!mounted) return;
+
+    switch (check.result) {
+      case PinResult.ok:
+        Navigator.pop(context, true);
+        break;
+      case PinResult.locked:
+        setState(() {
+          _busy = false;
+          _pin = '';
+          _message = 'Terlalu banyak percobaan. '
+              'Coba lagi dalam ${check.wait?.inSeconds ?? 30} detik.';
+        });
+        break;
+      case PinResult.wrong:
+        setState(() {
+          _busy = false;
+          _pin = '';
+          _message = 'PIN salah. Sisa percobaan: ${check.remainingAttempts}';
+        });
+        break;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Scaffold(
+      appBar: AppBar(title: Text(widget.title)),
+      body: SafeArea(
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(_prompt, style: theme.textTheme.titleMedium),
+                SizedBox(
+                  height: 40,
+                  child: Center(
+                    child: _message == null
+                        ? null
+                        : Text(
+                            _message!,
+                            textAlign: TextAlign.center,
+                            style: TextStyle(color: theme.colorScheme.error),
+                          ),
+                  ),
+                ),
+                PinPad(
+                  pin: _pin,
+                  enabled: !_busy,
+                  onChanged: (value) => setState(() {
+                    _pin = value;
+                    _message = null;
+                  }),
+                  onSubmit: _submit,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+===== 10. PIN PAD =====
+import 'package:flutter/material.dart';
+
+import '../services/app_lock_service.dart';
+
+/// Tombol angka untuk memasukkan PIN. Tidak memakai keyboard bawaan.
+class PinPad extends StatelessWidget {
+  const PinPad({
+    super.key,
+    required this.pin,
+    required this.onChanged,
+    required this.onSubmit,
+    this.onBiometric,
+    this.enabled = true,
+  });
+
+  final String pin;
+  final ValueChanged<String> onChanged;
+  final VoidCallback onSubmit;
+  final VoidCallback? onBiometric;
+  final bool enabled;
+
+  void _add(String digit) {
+    if (!enabled || pin.length >= AppLockService.maxPinLength) return;
+    onChanged(pin + digit);
+  }
+
+  void _back() {
+    if (!enabled || pin.isEmpty) return;
+    onChanged(pin.substring(0, pin.length - 1));
+  }
+
+  Widget _key(Widget child, VoidCallback? onTap) {
+    return SizedBox(
+      width: 76,
+      height: 68,
+      child: InkWell(
+        customBorder: const CircleBorder(),
+        onTap: enabled ? onTap : null,
+        child: Center(child: child),
+      ),
+    );
+  }
+
+  Widget _digit(String d) => _key(
+        Text(d, style: const TextStyle(fontSize: 26)),
+        () => _add(d),
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    final primary = Theme.of(context).colorScheme.primary;
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: List.generate(AppLockService.maxPinLength, (i) {
+            return Container(
+              margin: const EdgeInsets.symmetric(horizontal: 6),
+              width: 14,
+              height: 14,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: i < pin.length ? primary : Colors.transparent,
+                border: Border.all(color: primary, width: 1.5),
+              ),
+            );
+          }),
+        ),
+        const SizedBox(height: 20),
+        for (final row in const [
+          ['1', '2', '3'],
+          ['4', '5', '6'],
+          ['7', '8', '9'],
+        ])
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [for (final d in row) _digit(d)],
+          ),
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _key(
+              onBiometric == null
+                  ? const SizedBox.shrink()
+                  : const Icon(Icons.fingerprint, size: 30),
+              onBiometric,
+            ),
+            _digit('0'),
+            _key(const Icon(Icons.backspace_outlined), _back),
+          ],
+        ),
+        const SizedBox(height: 12),
+        SizedBox(
+          width: 228,
+          child: FilledButton(
+            onPressed: enabled && pin.length >= AppLockService.minPinLength
+                ? onSubmit
+                : null,
+            child: const Text('OK'),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+===== 11. PENGATURAN APP LOCK =====
+import 'package:flutter/material.dart';
+
+import '../screens/pin_screen.dart';
+import '../services/app_lock_service.dart';
+
+/// Kartu pengaturan kunci aplikasi untuk layar Pengaturan.
+class AppLockSettingsCard extends StatefulWidget {
+  const AppLockSettingsCard({super.key});
+
+  @override
+  State<AppLockSettingsCard> createState() => _AppLockSettingsCardState();
+}
+
+class _AppLockSettingsCardState extends State<AppLockSettingsCard> {
+  final AppLockService _lock = AppLockService.instance;
+
+  bool _enabled = false;
+  bool _biometric = false;
+  bool _biometricAvailable = false;
+  bool _busy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _refresh();
+  }
+
+  Future<void> _refresh() async {
+    await _lock.load();
+    final available = await _lock.biometricAvailable();
+    if (!mounted) return;
+
+    setState(() {
+      _enabled = _lock.enabled;
+      _biometric = _lock.biometricEnabled;
+      _biometricAvailable = available;
+    });
+  }
+
+  void _snack(String text) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
+  }
+
+  Future<String?> _createPin(String title) {
+    return Navigator.push<String>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => PinScreen(mode: PinMode.create, title: title),
+      ),
+    );
+  }
+
+  Future<bool> _verifyPin(String title) async {
+    final ok = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => PinScreen(mode: PinMode.verify, title: title),
+      ),
+    );
+    return ok == true;
+  }
+
+  Future<void> _toggleLock(bool on) async {
+    if (_busy) return;
+    setState(() => _busy = true);
+
+    try {
+      if (on) {
+        final pin = await _createPin('Buat PIN');
+        if (pin == null) return;
+
+        await _lock.setPin(pin);
+        _snack('Kunci aplikasi aktif.');
+      } else {
+        final ok = await _verifyPin('Masukkan PIN untuk mematikan kunci');
+        if (!ok) return;
+
+        await _lock.disable();
+        _snack('Kunci aplikasi dimatikan.');
+      }
+    } catch (e) {
+      _snack('Gagal mengubah kunci aplikasi: $e');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+      await _refresh();
+    }
+  }
+
+  Future<void> _changePin() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+
+    try {
+      final ok = await _verifyPin('Masukkan PIN saat ini');
+      if (!ok || !mounted) return;
+
+      final pin = await _createPin('Buat PIN baru');
+      if (pin == null) return;
+
+      await _lock.setPin(pin);
+      _snack('PIN berhasil diubah.');
+    } catch (e) {
+      _snack('Gagal mengubah PIN: $e');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+      await _refresh();
+    }
+  }
+
+  Future<void> _toggleBiometric(bool on) async {
+    if (_busy) return;
+    setState(() => _busy = true);
+
+    try {
+      if (on) {
+        final ok = await _lock.authenticate(
+          reason: 'Aktifkan buka dengan sidik jari',
+          biometricOnly: true,
+        );
+
+        if (!ok) {
+          _snack('Verifikasi sidik jari gagal atau dibatalkan.');
+          return;
+        }
+      }
+
+      await _lock.setBiometric(on);
+    } catch (e) {
+      _snack('Gagal mengubah pengaturan sidik jari: $e');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+      await _refresh();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: Icon(Icons.lock_outline),
+              title: Text('Kunci Aplikasi'),
+              subtitle: Text('Minta PIN atau sidik jari saat app dibuka.'),
+            ),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Kunci dengan PIN'),
+              value: _enabled,
+              onChanged: _busy ? null : _toggleLock,
+            ),
+            if (_enabled) ...[
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Buka dengan sidik jari'),
+                subtitle: Text(
+                  _biometricAvailable
+                      ? 'PIN tetap bisa dipakai kapan saja.'
+                      : 'Belum ada sidik jari yang terdaftar di HP.',
+                ),
+                value: _biometric,
+                onChanged: _busy || !_biometricAvailable ? null : _toggleBiometric,
+              ),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Ubah PIN'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: _busy ? null : _changePin,
+              ),
+            ],
+            const SizedBox(height: 8),
+            const Text(
+              'Kalau lupa PIN, ketuk "Lupa PIN?" di layar kunci lalu '
+              'verifikasi dengan kunci layar HP. Data tidak dihapus. '
+              'Kunci ini menahan orang lain membuka app, tetapi tidak '
+              'mengenkripsi database di HP.',
+              style: TextStyle(fontSize: 12),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+===== 12. INTEGRASI MAIN =====
+import 'package:flutter/material.dart';
+
+import 'screens/home_screen.dart';
+import 'widgets/app_lock_gate.dart';
+
+void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+  runApp(const BukuUtangApp());
+}
+
+class BukuUtangApp extends StatelessWidget {
+  const BukuUtangApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'Buku Utang Warung',
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(
+        useMaterial3: true,
+        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF2E7D32)),
+        visualDensity: VisualDensity.standard,
+      ),
+      builder: (context, child) =>
+          AppLockGate(child: child ?? const SizedBox.shrink()),
+      home: const HomeScreen(),
+    );
+  }
+}
+
+===== 13. KONFIGURASI ANDROID =====
+
+
+===== 14. WORKFLOW BUILD APK =====
+47-
+48-          sed -i 's/android:label="[^"]*"/android:label="Buku Utang Warung"/' \
+49-            android/app/src/main/AndroidManifest.xml
+50-
+51-      # Siapkan Android untuk sidik jari (local_auth)
+52:      - name: Konfigurasi Android untuk kunci aplikasi
+53-        run: |
+54-          set -euo pipefail
+55-
+56-          python3 - <<'PY'
+57-          from pathlib import Path
+58-          import re
+59-
+60-          kt_files = list(Path("android/app/src/main").rglob("MainActivity.kt"))
+61-          if len(kt_files) != 1:
+62-              raise SystemExit("MainActivity.kt tidak ditemukan atau ambigu")
+63-
+64-          kt = kt_files[0]
+65-          kt_text = kt.read_text()
+66:          if "FlutterFragmentActivity" not in kt_text:
+67-              if "FlutterActivity" not in kt_text:
+68-                  raise SystemExit("MainActivity.kt tidak memakai FlutterActivity")
+69:              kt.write_text(kt_text.replace("FlutterActivity", "FlutterFragmentActivity"))
+70-
+71-          manifest = Path("android/app/src/main/AndroidManifest.xml")
+72-          m = manifest.read_text()
+73:          perm = '<uses-permission android:name="android.permission.USE_BIOMETRIC"/>'
+74-          if perm not in m:
+75-              if m.count("<application") != 1:
+76-                  raise SystemExit("Tag application tidak ditemukan atau ambigu")
+77-              m = m.replace("<application", perm + "\n    <application", 1)
+78-              manifest.write_text(m)
+79-
+80-          for rel in ("values/styles.xml", "values-night/styles.xml"):
+81-              p = Path("android/app/src/main/res") / rel
+82-              if not p.is_file():
+83-                  continue
+84-              s = p.read_text()
+85-              s2 = re.sub(
+86:                  r'(<style name="LaunchTheme" parent=")[^"]*(")',
+87-                  r'\1Theme.AppCompat.DayNight.NoActionBar\2',
+88-                  s,
+89-              )
+90-              if s2 != s:
+91-                  p.write_text(s2)
+92-
+93-          print("Android siap untuk kunci aplikasi")
+94-          PY
+95-
+96-      # Siapkan keystore dari GitHub Secrets
+97-      - name: Siapkan keystore
+98-        env:
+99-          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+100-        run: |
+101-          set -euo pipefail
+102-
+103-          if [ -z "$KEYSTORE_BASE64" ]; then
+104-            echo "ERROR: KEYSTORE_BASE64 belum tersedia"
+105-            exit 1
+106-          fi
+107-
+108-          printf '%s' "$KEYSTORE_BASE64" \
+109-            | base64 --decode > android/app/upload-keystore.jks
+110-
+111-          test -s android/app/upload-keystore.jks
+112-          echo "Keystore berhasil disiapkan"
+113-
+114-      # Konfigurasi signing Kotlin DSL
+115-      - name: Konfigurasi signing Gradle
+116-        run: |
+117-          set -euo pipefail
+118-
+119-          python3 - <<'PY'
+120-          from pathlib import Path
+121-          import re
+122-
+123-          path = Path("android/app/build.gradle.kts")
+124-          if not path.is_file():
+125-              raise SystemExit("build.gradle.kts tidak ditemukan")
+126-
+127-          text = path.read_text()
+128-
+129-          android = list(re.finditer(r'(?m)^android\s*\{', text))
+130-          if len(android) != 1:
+131-              raise SystemExit("Blok android tidak ditemukan atau ambigu")
+132-
+133-          if re.search(r'(?m)^[ \t]*signingConfigs\s*\{', text):
+134-              raise SystemExit("Deklarasi signingConfigs sudah ada; hentikan untuk pemeriksaan manual")
+135-
+136-          debug_pattern = re.compile(
+137-              r'(?m)^([ \t]*)signingConfig\s*=\s*signingConfigs\.getByName\("debug"\)[ \t]*$'
+138-          )
+139-          debug = list(debug_pattern.finditer(text))
+140-
+141-          if len(debug) != 1:
+
+===== 15. PEMERIKSAAN IMPORT DAN API =====
+lib/main.dart:25:          AppLockGate(child: child ?? const SizedBox.shrink()),
+lib/screens/lock_screen.dart:19:  final AppLockService _lock = AppLockService.instance;
+lib/screens/lock_screen.dart:86:    final ok = await _lock.authenticate(
+lib/screens/lock_screen.dart:102:    if (_pin.length < AppLockService.minPinLength) return;
+lib/screens/lock_screen.dart:135:    final ok = await _lock.authenticate(
+lib/screens/pin_screen.dart:33:    if (_busy || _pin.length < AppLockService.minPinLength) return;
+lib/screens/pin_screen.dart:59:    final check = await AppLockService.instance.verifyPin(_pin);
+lib/services/google_drive_service.dart:29:  final SharedPreferencesAsync _preferences = SharedPreferencesAsync();
+lib/services/google_drive_service.dart:128:          decoded['kdf'] != 'PBKDF2-HMAC-SHA256' ||
+lib/services/google_drive_service.dart:243:    if (!_google.supportsAuthenticate()) {
+lib/services/google_drive_service.dart:247:    final account = await _google.authenticate();
+lib/services/backup_crypto_service.dart:5:import 'package:cryptography/cryptography.dart';
+lib/services/backup_crypto_service.dart:19:  static const String _kdfName = 'PBKDF2-HMAC-SHA256';
+lib/services/backup_crypto_service.dart:21:  final Pbkdf2 _kdf = Pbkdf2(
+lib/services/backup_status.dart:36:      final prefs = SharedPreferencesAsync();
+lib/services/backup_status.dart:82:      await SharedPreferencesAsync().setBool(key, value);
+lib/services/app_lock_service.dart:5:import 'package:cryptography/cryptography.dart';
+lib/services/app_lock_service.dart:20:/// Kunci aplikasi: PIN 4-6 angka (disimpan sebagai hash PBKDF2 + salt acak)
+lib/services/app_lock_service.dart:22:class AppLockService {
+lib/services/app_lock_service.dart:23:  AppLockService._();
+lib/services/app_lock_service.dart:25:  static final AppLockService instance = AppLockService._();
+lib/services/app_lock_service.dart:40:  final Pbkdf2 _kdf = Pbkdf2(
+lib/services/app_lock_service.dart:46:  final LocalAuthentication _auth = LocalAuthentication();
+lib/services/app_lock_service.dart:59:      final prefs = SharedPreferencesAsync();
+lib/services/app_lock_service.dart:101:    final prefs = SharedPreferencesAsync();
+lib/services/app_lock_service.dart:114:      final until = (await SharedPreferencesAsync().getInt(_untilKey)) ?? 0;
+lib/services/app_lock_service.dart:124:    final prefs = SharedPreferencesAsync();
+lib/services/app_lock_service.dart:163:      final prefs = SharedPreferencesAsync();
+lib/services/app_lock_service.dart:179:    await SharedPreferencesAsync().setBool(_bioKey, value);
+lib/services/app_lock_service.dart:194:  Future<bool> authenticate({
+lib/services/app_lock_service.dart:199:      return await _auth.authenticate(
+lib/widgets/pin_pad.dart:23:    if (!enabled || pin.length >= AppLockService.maxPinLength) return;
+lib/widgets/pin_pad.dart:58:          children: List.generate(AppLockService.maxPinLength, (i) {
+lib/widgets/pin_pad.dart:98:            onPressed: enabled && pin.length >= AppLockService.minPinLength
+lib/widgets/app_lock_gate.dart:8:class AppLockGate extends StatefulWidget {
+lib/widgets/app_lock_gate.dart:9:  const AppLockGate({super.key, required this.child});
+lib/widgets/app_lock_gate.dart:14:  State<AppLockGate> createState() => _AppLockGateState();
+lib/widgets/app_lock_gate.dart:17:class _AppLockGateState extends State<AppLockGate> with WidgetsBindingObserver {
+lib/widgets/app_lock_gate.dart:40:    await AppLockService.instance.load();
+lib/widgets/app_lock_gate.dart:43:      _locked = AppLockService.instance.enabled;
+lib/widgets/app_lock_gate.dart:61:      if (!AppLockService.instance.enabled) return;
+lib/widgets/app_lock_settings_card.dart:15:  final AppLockService _lock = AppLockService.instance;
+lib/widgets/app_lock_settings_card.dart:117:        final ok = await _lock.authenticate(
+pubspec.yaml:21:  cryptography: ^2.7.0
+
+===== 16. PEMERIKSAAN KONFLIK / TODO =====
+lib/main.dart:25:          AppLockGate(child: child ?? const SizedBox.shrink()),
+lib/screens/customer_screen.dart:235:          if (i == 0) return _Header(summary: summary, onAdd: _addTxn, onTagih: _tagih);
+lib/screens/customer_screen.dart:247:  final VoidCallback onTagih;
+lib/screens/customer_screen.dart:251:    required this.onTagih,
+lib/screens/customer_screen.dart:336:                onPressed: onTagih,
+lib/screens/home_screen.dart:228:                            onTagih: () => _tagihCepat(visible[i]),
+lib/screens/home_screen.dart:317:  final VoidCallback onTagih;
+lib/screens/home_screen.dart:321:    required this.onTagih,
+lib/screens/home_screen.dart:352:              onPressed: onTagih,
+lib/widgets/app_lock_gate.dart:8:class AppLockGate extends StatefulWidget {
+lib/widgets/app_lock_gate.dart:9:  const AppLockGate({super.key, required this.child});
+lib/widgets/app_lock_gate.dart:14:  State<AppLockGate> createState() => _AppLockGateState();
+lib/widgets/app_lock_gate.dart:17:class _AppLockGateState extends State<AppLockGate> with WidgetsBindingObserver {
 
 ===== AKHIR AUDIT =====
