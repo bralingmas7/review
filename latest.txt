@@ -1,235 +1,132 @@
-===== UTILITAS REKAP DAN BUKTI PELUNASAN =====
-1-import 'models.dart';
-2-
-3-const _bulan = [
-4-  'Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun',
-5-  'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des',
-6-];
-7-
-8-/// 15000 -> "Rp 15.000"
-9:String rupiah(int value) {
-10-  final digits = value.abs().toString();
-11-  final buf = StringBuffer();
-12-  for (var i = 0; i < digits.length; i++) {
-13-    if (i > 0 && (digits.length - i) % 3 == 0) buf.write('.');
-14-    buf.write(digits[i]);
-15-  }
-16-  return '${value < 0 ? '-' : ''}Rp $buf';
-17-}
-18-
-19-/// DateTime(2026, 11, 5) -> "5 Nov 2026"
-20:String tglJam(DateTime d) {
-21-  if (d.hour == 0 && d.minute == 0 && d.second == 0 && d.millisecond == 0) {
-22-    return tgl(d);
-23-  }
-24-  String two(int n) => n.toString().padLeft(2, '0');
-25-  return '${two(d.day)}-${two(d.month)}-${d.year} '
-26-      '${two(d.hour)}:${two(d.minute)}:${two(d.second)}';
-27-}
-28-
-29-String tgl(DateTime d) => '${d.day} ${_bulan[d.month - 1]} ${d.year}';
-30-
-31-String statusText(CustomerSummary s, [DateTime? now]) {
-32-  final today = dateOnly(now ?? DateTime.now());
-33-  switch (s.status(now)) {
-34-    case DebtStatus.piutang:
-35-      return 'Piutang pelanggan';
-36-    case DebtStatus.lunas:
-37-      return 'Lunas';
-38-    case DebtStatus.telat:
-39-      final days = today.difference(dateOnly(s.nextDue!)).inDays;
-40-      return 'Telat $days hari';
-41-    case DebtStatus.mendekati:
-42-      final days = dateOnly(s.nextDue!).difference(today).inDays;
-43-      return days == 0 ? 'Jatuh tempo hari ini' : 'Jatuh tempo $days hari lagi';
-44-    case DebtStatus.lancar:
-45-      return s.nextDue == null ? 'Utang berjalan' : 'Tempo ${tgl(s.nextDue!)}';
-46-  }
-47-}
-48-
-49-/// Ubah nomor lokal ke format internasional tanpa plus untuk wa.me.
-50-/// "0812-3456-789" -> "628123456789". Mengembalikan null jika kosong.
-51-String? normalizePhone(String raw) {
-52-  final d = raw.replaceAll(RegExp(r'[^0-9]'), '');
-53-  if (d.isEmpty) return null;
-54-  if (d.startsWith('62')) return d;
-55-  if (d.startsWith('0')) return '62${d.substring(1)}';
-56-  if (d.startsWith('8')) return '62$d';
-57-  return d;
-58-}
-59-
-60-/// Tautan WhatsApp. Tanpa nomor, WhatsApp membiarkan pengguna memilih kontak.
-61-Uri waUri(String phone, String text) {
-62-  final n = normalizePhone(phone);
-63-  final encoded = Uri.encodeComponent(text);
-64-  return Uri.parse('https://wa.me/${n ?? ''}?text=$encoded');
-65-}
-66-
-67-String _line(Txn t) {
-68-  final sign = t.type == TxnType.utang ? '+' : '-';
-69-  final label = t.type == TxnType.utang ? 'utang' : 'bayar';
-70-  final note = t.note.trim().isEmpty ? '' : ' (${t.note.trim()})';
-71-  return '${tglJam(t.date)}: $label $sign${rupiah(t.amount)}$note';
-72-}
-73-
-74-List<Txn> _newestFirst(List<Txn> txns) =>
-75-    [...txns]..sort((a, b) => b.date.compareTo(a.date));
-76-
-77-/// Pesan tagih yang sopan, siap kirim lewat WhatsApp.
-78-String buildReminder({
-79-  required String name,
-80-  required int balance,
-81-  DateTime? due,
-82-  required List<Txn> txns,
-83-  String shopName = '',
-84-  String header = '',
-85-  String footer = '',
-86-}) {
-87-  final b = StringBuffer();
-88-
-89-  if (header.trim().isNotEmpty) {
-90-    b.writeln(header.trim());
-91-    b.writeln('');
-92-  }
-93-  if (shopName.trim().isNotEmpty) {
-94-    b.writeln('*${shopName.trim()}*');
-95-  }
-96-
-97-  b
-98-    ..writeln('Halo $name, mohon maaf mengganggu 🙏')
-99-    ..writeln(
-100-      'Ini pengingat ramah dari warung: sisa utang Anda saat ini '
-101-      '*${rupiah(balance.abs())}*.',
-102-    );
-103-
-104-  if (due != null) b.writeln('Jatuh tempo: ${tgl(due)}.');
-105-
-106-  final recent = _newestFirst(txns);
-107-  if (recent.isNotEmpty) {
-108-    b.writeln('\nRincian siklus tagihan aktif:');
-109-    for (final t in recent) {
-110-      b.writeln('- ${_line(t)}');
-111-    }
-112-  }
-113-
-114-  final closing = footer.trim();
-115-  b.write(
-116-    '\n${closing.isNotEmpty ? closing : 'Kalau sudah ada rezekinya, ditunggu ya. Terima kasih banyak!'}',
-117-  );
-118-  return b.toString();
-119-}
-120-
-121-/// Pesan bukti pelunasan untuk satu siklus utang yang telah ditutup.
-122:String buildSettlementReceipt({
-123-  required String name,
-124-  required List<Txn> txns,
-125-  String shopName = '',
-126-  String header = '',
-127-  String footer = '',
-128-}) {
-129-  final sorted = [...txns]..sort((a, b) {
-130-    final byDate = a.date.compareTo(b.date);
-131-    return byDate != 0 ? byDate : (a.id ?? 0).compareTo(b.id ?? 0);
-132-  });
-133-
-134-  final totalDebt = sorted
-135-      .where((t) => t.type == TxnType.utang)
-136-      .fold<int>(0, (sum, t) => sum + t.amount);
-137-  final totalPaid = sorted
-138-      .where((t) => t.type == TxnType.bayar)
-139-      .fold<int>(0, (sum, t) => sum + t.amount);
-140-
-141-  final b = StringBuffer();
-142-
-143-  if (header.trim().isNotEmpty) {
-144-    b.writeln(header.trim());
-145-    b.writeln('');
-146-  }
-147-  if (shopName.trim().isNotEmpty) {
-148-    b.writeln('*${shopName.trim()}*');
-149-  }
-150-
-151-  b
-152-    ..writeln('BUKTI PELUNASAN')
-153-    ..writeln('Nama: $name')
-154-    ..writeln('Waktu: ${tglJam(DateTime.now())}')
-155-    ..writeln('Status: LUNAS')
-156-    ..writeln('Total utang: *${rupiah(totalDebt)}*')
-157-    ..writeln('Total pembayaran: *${rupiah(totalPaid)}*')
-158-    ..writeln('')
-159-    ..writeln('Rincian transaksi:');
-160-
-161-  for (final t in sorted) {
-162-    b.writeln('- ${_line(t)}');
-163-  }
-164-
-165-  b.writeln('');
-166-  b.write(
-167-    footer.trim().isNotEmpty
-168-        ? footer.trim()
-169-        : 'Terima kasih sudah menyelesaikan pembayaran 🙏',
-170-  );
-171-  return b.toString();
-172-}
-173-
-174-/// Rekap lengkap satu pelanggan sebagai teks.
-175:String buildRecap({
-176-  required String name,
-177-  required int balance,
-178-  required List<Txn> txns,
-179-}) {
-180-  final b = StringBuffer()
-181-    ..writeln('REKAP UTANG: $name')
-182-    ..writeln('Sisa utang: ${rupiah(balance)}')
-183-    ..writeln('Per tanggal: ${tgl(DateTime.now())}')
-184-    ..writeln('');
-185-  final sorted = [...txns]..sort((a, b) => a.date.compareTo(b.date));
-186-  for (final t in sorted) {
-187-    b.writeln(_line(t));
-188-  }
-189-  return b.toString().trimRight();
-190-}
+===== IMPLEMENTASI CETAK PNG =====
+Tue Nov 17 06:14:36 WIB 2026
 
-===== PENGATURAN IDENTITAS WARUNG =====
-import 'package:shared_preferences/shared_preferences.dart';
+===== FILE BARU =====
+366 lib/screens/receipt_image_screen.dart
 
-class ShopMessageSettings {
-  const ShopMessageSettings({
-    this.shopName = '',
-    this.header = '',
-    this.footer = '',
-  });
-
-  final String shopName;
-  final String header;
-  final String footer;
-
-  static const _nameKey = 'shop_message_name';
-  static const _headerKey = 'shop_message_header';
-  static const _footerKey = 'shop_message_footer';
-
-  static Future<ShopMessageSettings> load() async {
-    final prefs = SharedPreferencesAsync();
-    return ShopMessageSettings(
-      shopName: await prefs.getString(_nameKey) ?? '',
-      header: await prefs.getString(_headerKey) ?? '',
-      footer: await prefs.getString(_footerKey) ?? '',
-    );
-  }
-
-  Future<void> save() async {
-    final prefs = SharedPreferencesAsync();
-    await prefs.setString(_nameKey, shopName.trim());
-    await prefs.setString(_headerKey, header.trim());
-    await prefs.setString(_footerKey, footer.trim());
-  }
-}
-
-===== DEPENDENSI CETAK GAMBAR =====
-6:environment:
-7:  sdk: ">=3.3.0 <4.0.0"
-10:  flutter:
-24:  gal: ^2.3.3
-25:  share_plus: ^10.1.4
+===== INTEGRASI MENU PELANGGAN =====
+6-import '../dialogs.dart';
+7-import '../models.dart';
+8-import '../status_style.dart';
+9-import '../utils.dart';
+10-import '../services/shop_message_settings.dart';
+11:import 'receipt_image_screen.dart';
+12-
+13-class CustomerScreen extends StatefulWidget {
+14-  final int customerId;
+15-  const CustomerScreen({super.key, required this.customerId});
+16-
+17-  @override
+18-  State<CustomerScreen> createState() => _CustomerScreenState();
+19-}
+--
+183-      ),
+184-    ));
+185-    if (mounted) _snack('Rekap disalin');
+186-  }
+187-
+188:  Future<void> _openPng({required bool settlement}) async {
+189-    final c = _customer!;
+190-    final selectedTxns =
+191-        settlement ? latestClosedDebtCycle(_txns) : List<Txn>.from(_txns);
+192-
+193-    if (settlement && selectedTxns.isEmpty) {
+194-      _snack('Belum ada siklus utang yang lunas.');
+195-      return;
+196-    }
+--
+261-              switch (v) {
+262-                case 'edit':
+263-                  _edit();
+264-                case 'recap':
+265-                  _copyRecap();
+266:                case 'recap_png':
+267:                  _openPng(settlement: false);
+268:                case 'settlement_png':
+269:                  _openPng(settlement: true);
+270-                case 'delete':
+271-                  _deleteCustomer();
+272-              }
+273-            },
+274-            itemBuilder: (_) => [
+275-              const PopupMenuItem(value: 'edit', child: Text('Ubah data')),
+276-              const PopupMenuItem(value: 'recap', child: Text('Salin rekap')),
+277-              const PopupMenuItem(
+278:                value: 'recap_png',
+279-                child: Text('Simpan rekap sebagai PNG'),
+280-              ),
+281-              if (latestClosedDebtCycle(_txns).isNotEmpty)
+282-                const PopupMenuItem(
+283:                  value: 'settlement_png',
+284-                  child: Text('Bukti pelunasan PNG'),
+285-                ),
+286-              const PopupMenuItem(value: 'delete', child: Text('Hapus pelanggan')),
+287-            ],
+288-          ),
+289-        ],
+290-      ),
+291-      body: ListView.builder(
 
 ===== PEMERIKSAAN PATCH =====
+
+===== STATUS GIT =====
+ M .github/workflows/build-apk.yml
+ M lib/models.dart
+ M lib/screens/customer_screen.dart
+ M lib/screens/home_screen.dart
+ M lib/screens/settings_screen.dart
+ M lib/services/backup_status.dart
+ M lib/services/google_drive_service.dart
+ M lib/status_style.dart
+ M lib/utils.dart
+ M lib/widgets/backup_indicator.dart
+ M pubspec.yaml
+?? add_backup_indicator.sh
+?? backup_app_lock_integrity_20261116_210514/
+?? backup_app_lock_recovery_20261116_210009/
+?? backup_app_lock_safe_20261116_205501/
+?? backup_app_lock_safe_20261116_205635/
+?? backup_app_lock_safe_20261116_205712/
+?? backup_app_lock_storage_20261116_211528/
+?? backup_auto_backup_dependencies_20261116_234527/
+?? backup_backup_status_race_20261116_231910/
+?? backup_before_revert_lightweight_20261115_133121/
+?? backup_cloud_reconnect_20261115_133235/
+?? backup_diagnostik_google_20261115_111942/
+?? backup_fix_google_import_20261115_104148/
+?? backup_google_lightweight_restore_20261116_233447/
+?? backup_google_login_20261114_185251/
+?? backup_google_restore_20261115_132224/
+?? backup_google_session_20261115_102650/
+?? backup_google_session_fix_20261115_123805/
+?? backup_google_session_fix_20261115_124655/
+?? backup_guard_whatsapp_20261116_230413/
+?? backup_guard_whatsapp_20261116_230532/
+?? backup_guard_whatsapp_v2_20261116_230720/
+?? backup_listener_google_20261115_125040/
+?? backup_pengaturan_warung_20261116_222928/
+?? backup_remove_app_lock_20261116_213512/
+?? backup_remove_app_lock_20261116_213908/
+?? backup_saldo_piutang_20261116_221958/
+?? backup_sebelum_cloud_ui_20261114_225058/
+?? backup_sebelum_cloud_ui_20261114_225846/
+?? backup_sebelum_fix_sqlite_20261114_231957/
+?? backup_sebelum_google_20261114_184301/
+?? backup_sebelum_integrasi_drive_20261114_221515/
+?? backup_sebelum_pin_ffi_20261114_230953/
+?? backup_sebelum_pin_shared_preferences_20261115_124930/
+?? backup_sebelum_settings_20261114_164203/
+?? backup_sebelum_test_restore_20261114_230544/
+?? backup_sebelum_update_siklus/
+?? backup_sebelum_whatsapp_gambar_20261116_221203/
+?? backup_settings_warung_ui_20261116_223241/
+?? backup_status_google_20261114_192221/
+?? backup_whatsapp_newline_20261116_225847/
+?? fix_diag.sh
+?? fix_google_session.sh
+?? fix_ux.sh
+?? lib/screens/receipt_image_screen.dart
+?? lib/services/shop_message_settings.dart
+?? patch_google_session.py
+?? patchv3.py
+?? tambah_fitur.sh
