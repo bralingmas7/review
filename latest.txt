@@ -1,27 +1,267 @@
-===== PERBAIKAN NAMA FILE PNG =====
-Tue Nov 17 06:16:35 WIB 2026
+===== AUDIT WORKFLOW BUILD APK =====
+Tue Nov 17 06:17:00 WIB 2026
 
-114-
-115-    setState(() => _working = true);
-116-    try {
-117:      await Share.shareXFiles(
-118-        [
-119-          XFile.fromData(
-120-            bytes,
-121-            mimeType: 'image/png',
-122-            name: _fileName,
-123-          ),
-124-        ],
-125-        fileNameOverrides: [_fileName],
-126-      );
-127-    } catch (e) {
-128-      if (mounted) {
-129-        ScaffoldMessenger.of(context).showSnackBar(
-130-          SnackBar(content: Text('Gagal membagikan PNG: $e')),
-131-        );
+===== BUILD WORKFLOW =====
+     1	name: Build APK
+     2	
+     3	on:
+     4	  push:
+     5	    branches: [main, master]
+     6	  workflow_dispatch:
+     7	
+     8	permissions:
+     9	  contents: read
+    10	
+    11	jobs:
+    12	  build:
+    13	    runs-on: ubuntu-latest
+    14	
+    15	    steps:
+    16	      - name: Checkout repository
+    17	        uses: actions/checkout@v5
+    18	
+    19	      - name: Setup Java
+    20	        uses: actions/setup-java@v5
+    21	        with:
+    22	          distribution: temurin
+    23	          java-version: "21"
+    24	
+    25	      - name: Setup Flutter
+    26	        uses: subosito/flutter-action@v2
+    27	        with:
+    28	          channel: stable
+    29	          cache: true
+    30	
+    31	      # Buat scaffold Android tanpa kehilangan kode aplikasi
+    32	      - name: Buat scaffold Android
+    33	        run: |
+    34	          set -euo pipefail
+    35	
+    36	          mkdir -p "$RUNNER_TEMP/bak"
+    37	          cp -r lib test pubspec.yaml "$RUNNER_TEMP/bak/"
+    38	
+    39	          flutter create --platforms=android \
+    40	            --org id.warung \
+    41	            --project-name buku_utang_warung .
+    42	
+    43	          rm -rf lib test pubspec.yaml
+    44	          cp -r "$RUNNER_TEMP/bak/lib" lib
+    45	          cp -r "$RUNNER_TEMP/bak/test" test
+    46	          cp "$RUNNER_TEMP/bak/pubspec.yaml" pubspec.yaml
+    47	
+    48	          sed -i 's/android:label="[^"]*"/android:label="Buku Utang Warung"/' \
+    49	            android/app/src/main/AndroidManifest.xml
+    50	
+    51	          # Kunci Android Keystore tidak boleh dipindahkan oleh Android Auto Backup.
+    52	          python3 - <<'PYSECURE'
+    53	          from pathlib import Path
+    54	
+    55	          manifest = Path("android/app/src/main/AndroidManifest.xml")
+    56	          text = manifest.read_text()
+    57	          start = text.find("<application")
+    58	          if start < 0:
+    59	              raise SystemExit("Tag application tidak ditemukan.")
+    60	
+    61	          end = text.find(">", start)
+    62	          if end < 0:
+    63	              raise SystemExit("Tag application tidak lengkap.")
+    64	
+    65	          tag = text[start:end + 1]
+    66	          if "android:allowBackup=" in tag:
+    67	              raise SystemExit("allowBackup sudah diatur; periksa manual.")
+    68	
+    69	          text = text[:end] + ' android:allowBackup="false"' + text[end:]
+    70	          manifest.write_text(text)
+    71	          print("Android Auto Backup dinonaktifkan.")
+    72	          PYSECURE
+    73	
+    74	
+    75	      # Siapkan keystore dari GitHub Secrets
+    76	      - name: Siapkan keystore
+    77	        env:
+    78	          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+    79	        run: |
+    80	          set -euo pipefail
+    81	
+    82	          if [ -z "$KEYSTORE_BASE64" ]; then
+    83	            echo "ERROR: KEYSTORE_BASE64 belum tersedia"
+    84	            exit 1
+    85	          fi
+    86	
+    87	          printf '%s' "$KEYSTORE_BASE64" \
+    88	            | base64 --decode > android/app/upload-keystore.jks
+    89	
+    90	          test -s android/app/upload-keystore.jks
+    91	          echo "Keystore berhasil disiapkan"
+    92	
+    93	      # Konfigurasi signing Kotlin DSL
+    94	      - name: Konfigurasi signing Gradle
+    95	        run: |
+    96	          set -euo pipefail
+    97	
+    98	          python3 - <<'PY'
+    99	          from pathlib import Path
+   100	          import re
+   101	
+   102	          path = Path("android/app/build.gradle.kts")
+   103	          if not path.is_file():
+   104	              raise SystemExit("build.gradle.kts tidak ditemukan")
+   105	
+   106	          text = path.read_text()
+   107	
+   108	          android = list(re.finditer(r'(?m)^android\s*\{', text))
+   109	          if len(android) != 1:
+   110	              raise SystemExit("Blok android tidak ditemukan atau ambigu")
+   111	
+   112	          if re.search(r'(?m)^[ \t]*signingConfigs\s*\{', text):
+   113	              raise SystemExit("Deklarasi signingConfigs sudah ada; hentikan untuk pemeriksaan manual")
+   114	
+   115	          debug_pattern = re.compile(
+   116	              r'(?m)^([ \t]*)signingConfig\s*=\s*signingConfigs\.getByName\("debug"\)[ \t]*$'
+   117	          )
+   118	          debug = list(debug_pattern.finditer(text))
+   119	
+   120	          if len(debug) != 1:
+   121	              raise SystemExit("Referensi signing debug tidak ditemukan atau ambigu")
+   122	
+   123	          indent = re.match(r'[ \t]*', text[android[0].start():]).group(0)
+   124	          child = indent + "    "
+   125	          grand = child + "    "
+   126	
+   127	          signing = (
+   128	              "\n" + child + "signingConfigs {\n"
+   129	              + grand + 'create("release") {\n'
+   130	              + grand + '    keyAlias = System.getenv("KEY_ALIAS") ?: error("KEY_ALIAS belum tersedia")\n'
+   131	              + grand + '    keyPassword = System.getenv("KEY_PASSWORD") ?: error("KEY_PASSWORD belum tersedia")\n'
+   132	              + grand + '    storeFile = file(System.getenv("KEYSTORE_FILE") ?: error("KEYSTORE_FILE belum tersedia"))\n'
+   133	              + grand + '    storePassword = System.getenv("KEYSTORE_PASSWORD") ?: error("KEYSTORE_PASSWORD belum tersedia")\n'
+   134	              + grand + "}\n"
+   135	              + child + "}\n"
+   136	          )
+   137	
+   138	          pos = android[0].end()
+   139	          text = text[:pos] + signing + text[pos:]
+   140	
+   141	          text, count = debug_pattern.subn(
+   142	              r'\1signingConfig = signingConfigs.getByName("release")',
+   143	              text,
+   144	              count=1
+   145	          )
+   146	
+   147	          if count != 1:
+   148	              raise SystemExit("Penggantian signing gagal")
+   149	
+   150	          path.write_text(text)
+   151	          print("Signing release berhasil dikonfigurasi")
+   152	          PY
+   153	
+   154	      - name: Install dependency
+   155	        run: flutter pub get
+   156	
+   157	      - name: Jalankan test
+   158	        run: flutter test
+   159	
+   160	      # Build menggunakan keystore permanen
+   161	      - name: Build APK release
+   162	        env:
+   163	          KEYSTORE_FILE: upload-keystore.jks
+   164	          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+   165	          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+   166	          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+   167	        run: |
+   168	          set -euo pipefail
+   169	          flutter build apk --release
+   170	
+   171	      # Verifikasi tanda tangan dan SHA-1 sertifikat
+   172	      - name: Verifikasi APK
+   173	        run: |
+   174	          set -euo pipefail
+   175	
+   176	          APK="build/app/outputs/flutter-apk/app-release.apk"
+   177	          EXPECTED_SHA1="251bc0b80ca1d1db4053682abc45162792408b0b"
+   178	
+   179	          test -s "$APK"
+   180	
+   181	          APKSIGNER=$(find "${ANDROID_HOME:?ANDROID_HOME belum tersedia}/build-tools" \
+   182	            -type f -name apksigner | sort -V | tail -n 1)
+   183	
+   184	          test -n "$APKSIGNER"
+   185	
+   186	          CERT_INFO=$("$APKSIGNER" verify --print-certs "$APK")
+   187	
+   188	          printf '%s\n' "$CERT_INFO"
+   189	
+   190	          ACTUAL_SHA1=$(printf '%s\n' "$CERT_INFO" \
+   191	            | sed -nE 's/.*certificate SHA-1 digest: ([[:xdigit:]:]+).*/\1/p' \
+   192	            | head -n 1 \
+   193	            | tr -d ':' \
+   194	            | tr '[:upper:]' '[:lower:]')
+   195	
+   196	          if [ -z "$ACTUAL_SHA1" ]; then
+   197	            echo "ERROR: SHA-1 sertifikat tidak ditemukan"
+   198	            exit 1
+   199	          fi
+   200	
+   201	          if [ "$ACTUAL_SHA1" != "$EXPECTED_SHA1" ]; then
+   202	            echo "ERROR: SHA-1 sertifikat tidak cocok!"
+   203	            echo "Build dihentikan."
+   204	            exit 1
+   205	          fi
+   206	
+   207	          echo "VERIFIKASI BERHASIL: SHA-1 cocok."
+   208	
+   209	      # Upload APK agar bisa diunduh dari GitHub Actions
+   210	      - name: Upload APK
+   211	        uses: actions/upload-artifact@v4
+   212	        with:
+   213	          name: buku-utang-warung-apk
+   214	          path: build/app/outputs/flutter-apk/app-release.apk
+   215	          if-no-files-found: error
 
-EXIT DIFF CHECK: 0
+===== PUBSPEC =====
+     1	name: buku_utang_warung
+     2	description: Buku utang pelanggan untuk pemilik warung. Offline, cepat, dan bisa tagih lewat WhatsApp.
+     3	publish_to: "none"
+     4	version: 0.1.0+1
+     5	
+     6	environment:
+     7	  sdk: ">=3.3.0 <4.0.0"
+     8	
+     9	dependencies:
+    10	  flutter:
+    11	    sdk: flutter
+    12	  sqflite: ^2.3.3
+    13	  path: ^1.9.0
+    14	  url_launcher: ^6.3.0
+    15	  file_picker: ^12.3.0
+    16	
+    17	  google_sign_in: ^7.2.0
+    18	  googleapis: ^19.0.0
+    19	  extension_google_sign_in_as_googleapis_auth: ^3.0.0
+    20	  cryptography: ^2.7.0
+    21	  shared_preferences: 2.3.1
+    22	  flutter_secure_storage: ^11.2.0
+    23	  connectivity_plus: ^7.3.2
+    24	  gal: ^2.3.3
+    25	  share_plus: ^10.1.4
+    26	
+    27	dev_dependencies:
+    28	  flutter_test:
+    29	    sdk: flutter
+    30	  sqflite_common_ffi: 2.3.3
+    31	  sqlite3: 2.4.0
+    32	
+    33	flutter:
+    34	  uses-material-design: true
 
+===== DAFTAR TEST =====
+test/utils_test.dart
+test/backup_crypto_test.dart
+test/restore_database_test.dart
+
+===== ANDROID CONFIG =====
+
+===== STATUS PATCH =====
  M .github/workflows/build-apk.yml
  M lib/models.dart
  M lib/screens/customer_screen.dart
