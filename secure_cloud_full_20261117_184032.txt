@@ -1,0 +1,985 @@
+===== SECURE CLOUD BACKUP REVIEW =====
+Tue Nov 17 18:40:32 WIB 2026
+
+===== GIT STATUS =====
+ M lib/main.dart
+ M lib/screens/settings_screen.dart
+ M lib/services/backup_crypto_service.dart
+ M lib/services/google_drive_service.dart
+ M test/backup_crypto_test.dart
+?? add_backup_indicator.sh
+?? backup_app_lock_integrity_20261116_210514/
+?? backup_app_lock_recovery_20261116_210009/
+?? backup_app_lock_safe_20261116_205501/
+?? backup_app_lock_safe_20261116_205635/
+?? backup_app_lock_safe_20261116_205712/
+?? backup_app_lock_storage_20261116_211528/
+?? backup_auto_backup_dependencies_20261116_234527/
+?? backup_backup_status_race_20261116_231910/
+?? backup_before_revert_lightweight_20261115_133121/
+?? backup_cloud_reconnect_20261115_133235/
+?? backup_diagnostik_google_20261115_111942/
+?? backup_fix_connectivity_dbus_20261117_120224/
+?? backup_fix_google_import_20261115_104148/
+?? backup_fix_share_dependency_20261117_115727/
+?? backup_google_lightweight_restore_20261116_233447/
+?? backup_google_login_20261114_185251/
+?? backup_google_restore_20261115_132224/
+?? backup_google_session_20261115_102650/
+?? backup_google_session_fix_20261115_123805/
+?? backup_google_session_fix_20261115_124655/
+?? backup_guard_whatsapp_20261116_230413/
+?? backup_guard_whatsapp_20261116_230532/
+?? backup_guard_whatsapp_v2_20261116_230720/
+?? backup_listener_google_20261115_125040/
+?? backup_pengaturan_warung_20261116_222928/
+?? backup_png_filename_20261117_061635/
+?? backup_remove_app_lock_20261116_213512/
+?? backup_remove_app_lock_20261116_213908/
+?? backup_saldo_piutang_20261116_221958/
+?? backup_sebelum_cloud_ui_20261114_225058/
+?? backup_sebelum_cloud_ui_20261114_225846/
+?? backup_sebelum_fix_sqlite_20261114_231957/
+?? backup_sebelum_google_20261114_184301/
+?? backup_sebelum_integrasi_drive_20261114_221515/
+?? backup_sebelum_pin_ffi_20261114_230953/
+?? backup_sebelum_pin_shared_preferences_20261115_124930/
+?? backup_sebelum_settings_20261114_164203/
+?? backup_sebelum_test_restore_20261114_230544/
+?? backup_sebelum_update_siklus/
+?? backup_sebelum_whatsapp_gambar_20261116_221203/
+?? backup_settings_warung_ui_20261116_223241/
+?? backup_status_google_20261114_192221/
+?? backup_switch_png_20261117_062447/
+?? backup_whatsapp_newline_20261116_225847/
+?? fix_diag.sh
+?? fix_google_session.sh
+?? fix_ux.sh
+?? lib/services/backup_credential_service.dart
+?? patch_google_session.py
+?? patchv3.py
+?? tambah_fitur.sh
+?? test/utils_test.dart.backup_20261117_070428
+
+===== BACKUP CREDENTIAL SERVICE =====
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+
+class BackupCredentialService {
+  BackupCredentialService._();
+
+  static final BackupCredentialService instance =
+      BackupCredentialService._();
+
+  static const String _passwordKey = 'buw_cloud_backup_password_v1';
+
+  // Default Android implementation uses Android Keystore to protect the
+  // encryption key and AES-GCM to encrypt the stored value.
+  final FlutterSecureStorage _storage = FlutterSecureStorage();
+
+  Future<String?> readPassword() {
+    return _storage.read(key: _passwordKey);
+  }
+
+  // Accept 8+ characters here to preserve access to older backups.
+  // New passwords are enforced at 12+ characters by BackupCryptoService.
+  Future<void> savePassword(String password) async {
+    if (password.runes.length < 8) {
+      throw ArgumentError('Password backup minimal 8 karakter.');
+    }
+    await _storage.write(key: _passwordKey, value: password);
+  }
+
+  Future<void> clearPassword() {
+    return _storage.delete(key: _passwordKey);
+  }
+}
+
+===== BACKUP CRYPTO SERVICE =====
+import 'dart:convert';
+import 'dart:math';
+import 'dart:typed_data';
+
+import 'package:cryptography/cryptography.dart';
+
+class BackupCryptoService {
+  BackupCryptoService._();
+
+  static final BackupCryptoService instance = BackupCryptoService._();
+
+  static const int minimumPasswordLength = 12;
+  static const int _legacyMinimumPasswordLength = 8;
+  static const int _version = 1;
+  static const int _iterations = 310000;
+  static const int _maximumEncryptedBytes = 100 * 1024 * 1024;
+
+  static const String _format = 'buku_utang_warung_encrypted_backup';
+  static const String _cipherName = 'AES-256-GCM';
+  static const String _kdfName = 'PBKDF2-HMAC-SHA256';
+
+  final Pbkdf2 _kdf = Pbkdf2(
+    macAlgorithm: Hmac.sha256(),
+    iterations: _iterations,
+    bits: 256,
+  );
+
+  final AesGcm _cipher = AesGcm.with256bits();
+
+  void _validatePassword(
+    String password, {
+    int minimumLength = minimumPasswordLength,
+  }) {
+    if (password.runes.length < minimumLength) {
+      throw ArgumentError(
+        'Password backup minimal $minimumLength karakter.',
+      );
+    }
+  }
+
+  Future<Uint8List> encryptBackup(
+    Map<String, Object?> backup,
+    String password,
+  ) async {
+    _validatePassword(password);
+
+    final salt = Uint8List(16);
+    final random = Random.secure();
+
+    for (var i = 0; i < salt.length; i++) {
+      salt[i] = random.nextInt(256);
+    }
+
+    final key = await _kdf.deriveKeyFromPassword(
+      password: password,
+      nonce: salt,
+    );
+
+    final clearBytes = utf8.encode(jsonEncode(backup));
+    final encrypted = await _cipher.encrypt(
+      clearBytes,
+      secretKey: key,
+    );
+
+    final envelope = <String, Object?>{
+      'format': _format,
+      'version': _version,
+      'cipher': _cipherName,
+      'kdf': _kdfName,
+      'iterations': _iterations,
+      'salt': base64Encode(salt),
+      'nonce': base64Encode(encrypted.nonce),
+      'ciphertext': base64Encode(encrypted.cipherText),
+      'mac': base64Encode(encrypted.mac.bytes),
+    };
+
+    return Uint8List.fromList(utf8.encode(jsonEncode(envelope)));
+  }
+
+  Future<Map<String, dynamic>> decryptBackup(
+    List<int> encryptedBytes,
+    String password,
+  ) async {
+    // Backups created by older app versions allowed 8-character passwords.
+    _validatePassword(
+      password,
+      minimumLength: _legacyMinimumPasswordLength,
+    );
+
+    if (encryptedBytes.isEmpty ||
+        encryptedBytes.length > _maximumEncryptedBytes) {
+      throw const FormatException('Ukuran file backup tidak valid.');
+    }
+
+    final decodedEnvelope = jsonDecode(utf8.decode(encryptedBytes));
+
+    if (decodedEnvelope is! Map<String, dynamic>) {
+      throw const FormatException('Format file backup tidak valid.');
+    }
+
+    final envelope = decodedEnvelope;
+
+    if (envelope['format'] != _format ||
+        envelope['version'] != _version ||
+        envelope['cipher'] != _cipherName ||
+        envelope['kdf'] != _kdfName ||
+        envelope['iterations'] != _iterations) {
+      throw const FormatException(
+        'Format atau versi enkripsi backup tidak didukung.',
+      );
+    }
+
+    try {
+      final salt = base64Decode(envelope['salt'] as String);
+      final nonce = base64Decode(envelope['nonce'] as String);
+      final ciphertext = base64Decode(envelope['ciphertext'] as String);
+      final macBytes = base64Decode(envelope['mac'] as String);
+
+      if (salt.length != 16 ||
+          nonce.length != 12 ||
+          macBytes.length != 16 ||
+          ciphertext.isEmpty) {
+        throw const FormatException('Data enkripsi backup tidak lengkap.');
+      }
+
+      final key = await _kdf.deriveKeyFromPassword(
+        password: password,
+        nonce: salt,
+      );
+
+      final secretBox = SecretBox(
+        ciphertext,
+        nonce: nonce,
+        mac: Mac(macBytes),
+      );
+
+      final clearBytes = await _cipher.decrypt(
+        secretBox,
+        secretKey: key,
+      );
+
+      final decodedBackup = jsonDecode(utf8.decode(clearBytes));
+
+      if (decodedBackup is! Map<String, dynamic>) {
+        throw const FormatException('Isi backup bukan objek JSON.');
+      }
+
+      return decodedBackup;
+    } on FormatException {
+      rethrow;
+    } catch (_) {
+      throw const FormatException(
+        'Backup gagal dibuka. Password salah atau file telah berubah.',
+      );
+    }
+  }
+}
+
+===== GOOGLE DRIVE SERVICE =====
+import 'dart:async';
+import 'dart:convert';
+import 'dart:typed_data';
+
+import 'package:extension_google_sign_in_as_googleapis_auth/extension_google_sign_in_as_googleapis_auth.dart';
+import 'package:google_sign_in/google_sign_in.dart';
+import 'package:googleapis/drive/v3.dart' as drive;
+import 'package:shared_preferences/shared_preferences.dart';
+
+class GoogleDriveService {
+  GoogleDriveService._();
+
+  static final GoogleDriveService instance = GoogleDriveService._();
+
+  static const String _serverClientId =
+      '83176740993-ughbfdiak2v3mq31prsfpae7pffkaku7.apps.googleusercontent.com';
+
+  static const List<String> _scopes = [
+    'https://www.googleapis.com/auth/drive.file',
+  ];
+
+  static const String _backupFormat =
+      'buku_utang_warung_encrypted_backup';
+
+  static const int _backupVersion = 1;
+  static const int _maximumBackupBytes = 100 * 1024 * 1024;
+
+  final GoogleSignIn _google = GoogleSignIn.instance;
+  final SharedPreferencesAsync _preferences = SharedPreferencesAsync();
+  static const String _savedAccountEmailKey = 'google_drive_saved_email';
+  Future<void>? _initialization;
+  GoogleSignInAccount? _account;
+  StreamSubscription<GoogleSignInAuthenticationEvent>? _authSubscription;
+
+  final StreamController<GoogleSignInAccount?> _accountChanges =
+      StreamController<GoogleSignInAccount?>.broadcast();
+
+  GoogleSignInAccount? get account => _account;
+  Stream<GoogleSignInAccount?> get accountChanges =>
+      _accountChanges.stream;
+
+  void _setAccount(GoogleSignInAccount? account) {
+    _account = account;
+    _accountChanges.add(account);
+  }
+
+  Future<void> initialize() {
+    return _initialization ??= _initialize();
+  }
+
+  Future<void> _initialize() async {
+    await _google.initialize(serverClientId: _serverClientId);
+
+    _authSubscription ??= _google.authenticationEvents.listen(
+      (event) {
+        if (event is GoogleSignInAuthenticationEventSignIn) {
+          _restoreDiagnostic = 'AUTH_EVENT_SIGN_IN';
+          _setAccount(event.user);
+        } else if (event is GoogleSignInAuthenticationEventSignOut) {
+          _restoreDiagnostic = 'AUTH_EVENT_SIGN_OUT';
+          _setAccount(null);
+        }
+      },
+      onError: (Object error, StackTrace stack) {
+        _accountChanges.addError(error, stack);
+      },
+    );
+  }
+
+  String _restoreDiagnostic = 'BELUM_DIPERIKSA';
+
+  String get restoreDiagnostic => _restoreDiagnostic;
+
+  Future<String?> loadSavedAccountEmail() =>
+      _preferences.getString(_savedAccountEmailKey);
+
+  Future<GoogleSignInAccount?> restoreAccount() async {
+    _restoreDiagnostic = 'INITIALIZING';
+    await initialize();
+
+    if (_account != null) {
+      _restoreDiagnostic = 'SESSION_ACTIVE';
+      return _account;
+    }
+
+    _restoreDiagnostic = 'ATTEMPTING_LIGHTWEIGHT_AUTH';
+
+    try {
+      final attempt = _google.attemptLightweightAuthentication(
+        reportAllExceptions: true,
+      );
+
+      if (attempt == null) {
+        _restoreDiagnostic = 'LIGHTWEIGHT_NOT_AVAILABLE';
+        return null;
+      }
+
+      final restored = await attempt;
+
+      if (restored == null) {
+        _restoreDiagnostic = 'NO_ACTIVE_SESSION';
+        return _account;
+      }
+
+      _setAccount(restored);
+      _restoreDiagnostic = 'LIGHTWEIGHT_RESTORED';
+      return restored;
+    } catch (e) {
+      _restoreDiagnostic = 'LIGHTWEIGHT_ERROR: ${e.runtimeType}';
+      return null;
+    }
+  }
+
+  Future<T> _withDriveApi<T>(
+    Future<T> Function(drive.DriveApi api) action,
+  ) async {
+    final currentAccount = _account;
+
+    if (currentAccount == null) {
+      throw StateError(
+        'Sesi Google belum aktif. Hubungkan ulang Google Drive terlebih dahulu.',
+      );
+    }
+
+    final authorizationClient = currentAccount.authorizationClient;
+    final authorization =
+        await authorizationClient.authorizationForScopes(_scopes) ??
+        await authorizationClient.authorizeScopes(_scopes);
+
+    final client = authorization.authClient(scopes: _scopes);
+
+    try {
+      final api = drive.DriveApi(client);
+      return await action(api);
+    } finally {
+      client.close();
+    }
+  }
+
+  void _validateEncryptedFile(List<int> bytes) {
+    if (bytes.isEmpty || bytes.length > _maximumBackupBytes) {
+      throw const FormatException('Ukuran backup tidak valid.');
+    }
+
+    try {
+      final decoded = jsonDecode(utf8.decode(bytes));
+
+      if (decoded is! Map<String, dynamic> ||
+          decoded['format'] != _backupFormat ||
+          decoded['version'] != _backupVersion ||
+          decoded['cipher'] != 'AES-256-GCM' ||
+          decoded['kdf'] != 'PBKDF2-HMAC-SHA256' ||
+          decoded['iterations'] != 310000 ||
+          decoded['salt'] is! String ||
+          decoded['nonce'] is! String ||
+          decoded['ciphertext'] is! String ||
+          decoded['mac'] is! String) {
+        throw const FormatException(
+          'File bukan backup terenkripsi Buku Utang Warung.',
+        );
+      }
+    } on FormatException {
+      rethrow;
+    } catch (_) {
+      throw const FormatException('Isi file backup tidak valid.');
+    }
+  }
+
+  Future<List<drive.File>> _listAllEncryptedBackups(
+    drive.DriveApi api,
+  ) async {
+    final results = <drive.File>[];
+    String? pageToken;
+
+    do {
+      final response = await api.files.list(
+        q: "trashed = false and "
+            "appProperties has { key='app' and "
+            "value='buku_utang_warung' }",
+        spaces: 'drive',
+        pageSize: 100,
+        pageToken: pageToken,
+        orderBy: 'modifiedTime desc',
+        $fields: 'nextPageToken,files(id,name,mimeType,size,createdTime,modifiedTime)',
+      );
+
+      results.addAll(response.files ?? <drive.File>[]);
+      pageToken = response.nextPageToken;
+    } while (pageToken != null);
+
+    return results;
+  }
+
+  Future<drive.File> uploadEncryptedBackup(
+    List<int> encryptedBytes,
+  ) async {
+    _validateEncryptedFile(encryptedBytes);
+
+    return _withDriveApi((api) async {
+      final metadata = drive.File()
+        ..name = 'backup_buku_utang_warung.buwbackup'
+        ..mimeType = 'application/octet-stream'
+        ..appProperties = {
+          'app': 'buku_utang_warung',
+          'format': 'encrypted_backup',
+          'version': '1',
+        };
+
+      final media = drive.Media(
+        Stream<List<int>>.value(encryptedBytes),
+        encryptedBytes.length,
+      );
+
+      final existing = await _listAllEncryptedBackups(api);
+      late final drive.File uploaded;
+
+      if (existing.isEmpty) {
+        uploaded = await api.files.create(
+          metadata,
+          uploadMedia: media,
+          $fields: 'id,name,mimeType,size,createdTime,modifiedTime',
+        );
+      } else {
+        final canonical = existing.first;
+        final canonicalId = canonical.id;
+        if (canonicalId == null || canonicalId.isEmpty) {
+          throw StateError('ID backup cloud utama tidak tersedia.');
+        }
+
+        // Update the newest existing backup instead of creating another file.
+        uploaded = await api.files.update(
+          metadata,
+          canonicalId,
+          uploadMedia: media,
+          $fields: 'id,name,mimeType,size,createdTime,modifiedTime',
+        );
+      }
+
+      if (uploaded.id == null) {
+        throw StateError('Upload selesai tetapi ID file tidak ditemukan.');
+      }
+
+      // Only trash duplicates after the replacement upload/update succeeded.
+      // A cleanup failure must not invalidate the newly uploaded backup.
+      for (final duplicate in existing.skip(1)) {
+        final duplicateId = duplicate.id;
+        if (duplicateId == null || duplicateId.isEmpty) continue;
+        try {
+          await api.files.update(
+            drive.File()..trashed = true,
+            duplicateId,
+            $fields: 'id,trashed',
+          );
+        } catch (_) {
+          // Leave an undeleted duplicate in Drive; the newest remains canonical.
+        }
+      }
+
+      return uploaded;
+    });
+  }
+
+  Future<List<drive.File>> listEncryptedBackups() async {
+    return _withDriveApi((api) async {
+      final results = await _listAllEncryptedBackups(api);
+      // Restore UI exposes only the latest canonical backup.
+      return results.isEmpty ? <drive.File>[] : <drive.File>[results.first];
+    });
+  }
+
+  Future<Uint8List> downloadEncryptedBackup(String fileId) async {
+    if (fileId.trim().isEmpty) {
+      throw ArgumentError('ID file backup kosong.');
+    }
+
+    return _withDriveApi((api) async {
+      final response = await api.files.get(
+        fileId,
+        downloadOptions: drive.DownloadOptions.fullMedia,
+      );
+
+      if (response is! drive.Media) {
+        throw StateError('Google Drive tidak mengembalikan isi file.');
+      }
+
+      final builder = BytesBuilder(copy: false);
+
+      await for (final chunk in response.stream) {
+        builder.add(chunk);
+
+        if (builder.length > _maximumBackupBytes) {
+          throw const FormatException(
+            'File backup melebihi batas ukuran 100 MB.',
+          );
+        }
+      }
+
+      final bytes = builder.takeBytes();
+      _validateEncryptedFile(bytes);
+
+      return bytes;
+    });
+  }
+
+  Future<String> connectAndTest() async {
+    await initialize();
+
+    if (!_google.supportsAuthenticate()) {
+      throw Exception('Metode login tidak didukung pada perangkat ini.');
+    }
+
+    final account = await _google.authenticate();
+
+    final authorizationClient = account.authorizationClient;
+    final authorization =
+        await authorizationClient.authorizationForScopes(_scopes) ??
+        await authorizationClient.authorizeScopes(_scopes);
+
+    final client = authorization.authClient(scopes: _scopes);
+
+    try {
+      final api = drive.DriveApi(client);
+
+      await api.files.list(
+        pageSize: 1,
+        $fields: 'files(id,name)',
+      );
+    } finally {
+      client.close();
+    }
+
+    _setAccount(account);
+    await _preferences.setString(_savedAccountEmailKey, account.email);
+    _restoreDiagnostic = 'SESSION_ACTIVE';
+
+    return account.email;
+  }
+
+  Future<void> signOut() async {
+    await initialize();
+    await _google.signOut();
+    await _preferences.remove(_savedAccountEmailKey);
+    _setAccount(null);
+    _restoreDiagnostic = 'SIGNED_OUT';
+  }
+
+  Future<String> switchAccount() async {
+    await signOut();
+    return connectAndTest();
+  }
+}
+
+===== SETTINGS BACKUP DAN RESTORE =====
+      await AppDb.instance.restoreBackup(decoded);
+      _message('Restore berhasil. Data telah dipulihkan.');
+    } catch (e) {
+      _message('Restore gagal. Data lama tetap aman: $e');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+
+  Future<String?> _askCloudPassword({required bool confirm}) async {
+    final passwordController = TextEditingController();
+    final confirmController = TextEditingController();
+    final formKey = GlobalKey<FormState>();
+    String? mismatch;
+
+    try {
+      return await showDialog<String>(
+        context: context,
+        barrierDismissible: false,
+        builder: (dialogContext) => StatefulBuilder(
+          builder: (dialogContext, setDialogState) => AlertDialog(
+            title: Text(
+              confirm ? 'Buat password backup' : 'Password backup',
+            ),
+            content: Form(
+              key: formKey,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextFormField(
+                    controller: passwordController,
+                    obscureText: true,
+                    autofocus: true,
+                    decoration: InputDecoration(
+                      labelText: 'Password backup',
+                      helperText: confirm
+                          ? 'Minimal 12 karakter untuk password baru'
+                          : 'Minimal 8 karakter untuk kompatibilitas backup lama',
+                    ),
+                    validator: (value) {
+                      final minimumLength = confirm
+                          ? BackupCryptoService.minimumPasswordLength
+                          : 8;
+                      if ((value ?? '').runes.length < minimumLength) {
+                        return 'Password minimal $minimumLength karakter.';
+                      }
+                      return null;
+                    },
+                  ),
+                  if (confirm) ...[
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: confirmController,
+                      obscureText: true,
+                      decoration: const InputDecoration(
+                        labelText: 'Ulangi password backup',
+                      ),
+                      onChanged: (_) {
+                        if (mismatch != null) {
+                          setDialogState(() => mismatch = null);
+                        }
+                      },
+                    ),
+                  ],
+                  if (mismatch != null) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      mismatch!,
+                      style: TextStyle(
+                        color: Theme.of(dialogContext).colorScheme.error,
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Password ini berbeda dari password Google. '
+                    'Setelah berhasil diverifikasi, password disimpan aman '
+                    'di perangkat ini. Password tidak dikirim ke Google Drive. '
+                    'Jika lupa, backup tidak dapat dipulihkan.',
+                    style: TextStyle(fontSize: 12),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('Batal'),
+              ),
+              FilledButton(
+                onPressed: () {
+                  if (formKey.currentState?.validate() != true) return;
+
+                  if (confirm &&
+                      passwordController.text != confirmController.text) {
+                    setDialogState(
+                      () => mismatch = 'Password yang dimasukkan tidak sama.',
+                    );
+                    return;
+                  }
+
+                  Navigator.pop(dialogContext, passwordController.text);
+                },
+                child: const Text('Lanjutkan'),
+              ),
+            ],
+          ),
+        ),
+      );
+    } finally {
+      passwordController.dispose();
+      confirmController.dispose();
+    }
+  }
+
+  Future<void> _cloudBackup() async {
+    if (_busy || _googleEmail == null) return;
+
+    setState(() => _busy = true);
+
+    try {
+      if (GoogleDriveService.instance.account == null) {
+        final email = await GoogleDriveService.instance.connectAndTest();
+        if (!mounted) return;
+        setState(() => _googleEmail = email);
+      }
+
+      var password = await BackupCredentialService.instance.readPassword();
+
+      // Upgrade any legacy 8-11 character saved password before creating
+      // a new backup. Old backups remain decryptable with their old password.
+      if (password == null ||
+          password.runes.length < BackupCryptoService.minimumPasswordLength) {
+        password = await _askCloudPassword(confirm: true);
+        if (password == null || !mounted) return;
+        await BackupCredentialService.instance.savePassword(password);
+      }
+
+      final revision = BackupStatus.instance.revision;
+      final data = await AppDb.instance.exportBackup();
+      final encrypted =
+          await BackupCryptoService.instance.encryptBackup(data, password);
+
+      final uploaded =
+          await GoogleDriveService.instance.uploadEncryptedBackup(encrypted);
+
+      await BackupStatus.instance.markBackedUp(revision);
+      _message('Backup terenkripsi berhasil diunggah: ${uploaded.name}');
+    } catch (e) {
+      _message('Backup Google Drive gagal: $e');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _cloudRestore() async {
+    if (_busy || _googleEmail == null) return;
+
+    setState(() => _busy = true);
+
+    try {
+      if (GoogleDriveService.instance.account == null) {
+        final email = await GoogleDriveService.instance.connectAndTest();
+        if (!mounted) return;
+        setState(() => _googleEmail = email);
+      }
+
+      final files =
+          await GoogleDriveService.instance.listEncryptedBackups();
+
+      if (!mounted) return;
+
+      if (files.isEmpty) {
+        _message('Belum ada backup Buku Utang Warung di Google Drive.');
+        return;
+      }
+
+      // Drive service returns only the newest canonical backup.
+      final selectedFile = files.first;
+      final fileId = selectedFile.id;
+      if (fileId == null || fileId.isEmpty) {
+        throw StateError('ID backup Google Drive tidak tersedia.');
+      }
+
+      var password = await BackupCredentialService.instance.readPassword();
+      final needsSecureSave = password == null;
+
+      if (password == null) {
+        password = await _askCloudPassword(confirm: false);
+      }
+      if (password == null || !mounted) return;
+
+      final encrypted =
+          await GoogleDriveService.instance.downloadEncryptedBackup(fileId);
+
+      final decoded =
+          await BackupCryptoService.instance.decryptBackup(
+        encrypted,
+        password,
+      );
+
+      // Save only after the password successfully decrypts a valid backup.
+      if (needsSecureSave) {
+        await BackupCredentialService.instance.savePassword(password);
+      }
+
+      AppDb.validateBackupData(decoded);
+
+      final customerCount = (decoded['customers'] as List).length;
+      final transactionCount = (decoded['transactions'] as List).length;
+
+      if (!mounted) return;
+
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('Pulihkan backup cloud?'),
+          content: Text(
+            'Data lokal saat ini akan DIGANTI dengan isi backup cloud.\n\n'
+            'Pelanggan: $customerCount\n'
+
+===== MAIN =====
+import 'dart:async';
+
+import 'package:flutter/material.dart';
+
+import 'screens/home_screen.dart';
+import 'services/google_drive_service.dart';
+
+void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+  runApp(const BukuUtangApp());
+
+  // Restore Google session without delaying offline-first app startup.
+  unawaited(
+    GoogleDriveService.instance.restoreAccount().then<void>(
+      (_) {},
+      onError: (Object error, StackTrace stack) {
+        debugPrint('Pemulihan sesi Google saat startup gagal: $error');
+      },
+    ),
+  );
+}
+
+class BukuUtangApp extends StatelessWidget {
+  const BukuUtangApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'Buku Utang Warung',
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(
+        useMaterial3: true,
+        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF2E7D32)),
+        visualDensity: VisualDensity.standard,
+      ),
+      home: const HomeScreen(),
+    );
+  }
+}
+
+===== BACKUP CRYPTO TEST =====
+import 'dart:convert';
+
+import 'package:flutter_test/flutter_test.dart';
+import 'package:buku_utang_warung/services/backup_crypto_service.dart';
+
+void main() {
+  final crypto = BackupCryptoService.instance;
+
+  final sampleBackup = <String, Object?>{
+    'format': 'buku_utang_warung_backup',
+    'version': 1,
+    'exported_at': '2026-11-14T00:00:00.000Z',
+    'customers': [
+      {'id': 1, 'name': 'Pelanggan Uji'},
+    ],
+    'transactions': [
+      {'id': 1, 'customer_id': 1, 'amount': 25000},
+    ],
+  };
+
+  test('Backup dapat dienkripsi dan dibuka kembali', () async {
+    const password = 'WarungAman2026';
+
+    final encrypted = await crypto.encryptBackup(
+      sampleBackup,
+      password,
+    );
+
+    expect(encrypted, isNotEmpty);
+    expect(utf8.decode(encrypted), isNot(contains('Pelanggan Uji')));
+
+    final restored = await crypto.decryptBackup(
+      encrypted,
+      password,
+    );
+
+    expect(restored['customers'], sampleBackup['customers']);
+    expect(restored['transactions'], sampleBackup['transactions']);
+  });
+
+  test('Password baru kurang dari 12 karakter ditolak', () async {
+    expect(
+      () => crypto.encryptBackup(sampleBackup, '12345678901'),
+      throwsArgumentError,
+    );
+  });
+
+  test('Password 8 karakter lolos validasi restore lama', () async {
+    const legacyPassword = 'Lama2026';
+    final encrypted = await crypto.encryptBackup(
+      sampleBackup,
+      'PasswordBaru2026',
+    );
+
+    // The decrypt path retains the legacy minimum-length rule.
+    final restored = await crypto.decryptBackup(
+      encrypted,
+      'PasswordBaru2026',
+    );
+    expect(restored['customers'], sampleBackup['customers']);
+
+    // An 8-character password remains accepted by the decrypt validator.
+    // This checks the compatibility boundary without storing any secret.
+    expect(
+      () => crypto.decryptBackup(encrypted, legacyPassword),
+      throwsFormatException,
+    );
+  });
+
+  test('Password salah tidak dapat membuka backup', () async {
+    final encrypted = await crypto.encryptBackup(
+      sampleBackup,
+      'PasswordBenar2026',
+    );
+
+    expect(
+      () => crypto.decryptBackup(encrypted, 'PasswordSalah2026'),
+      throwsFormatException,
+    );
+  });
+
+  test('Isi ciphertext yang diubah akan ditolak', () async {
+    final encrypted = await crypto.encryptBackup(
+      sampleBackup,
+      'PasswordBenar2026',
+    );
+
+    final envelope =
+        jsonDecode(utf8.decode(encrypted)) as Map<String, dynamic>;
+
+    final ciphertext = base64Decode(envelope['ciphertext'] as String);
+    ciphertext[0] ^= 1;
+    envelope['ciphertext'] = base64Encode(ciphertext);
+
+    final tampered = utf8.encode(jsonEncode(envelope));
+
+    expect(
+      () => crypto.decryptBackup(tampered, 'PasswordBenar2026'),
+      throwsFormatException,
+    );
+  });
+}
+
+===== DIFF CHECK =====
+
+===== DIFF STAT =====
+ lib/main.dart                           | 13 +++++
+ lib/screens/settings_screen.dart        | 85 ++++++++++++++---------------
+ lib/services/backup_crypto_service.dart | 18 ++++--
+ lib/services/google_drive_service.dart  | 97 +++++++++++++++++++++++----------
+ test/backup_crypto_test.dart            | 26 ++++++++-
+ 5 files changed, 159 insertions(+), 80 deletions(-)
