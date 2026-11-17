@@ -1,566 +1,100 @@
-===== BACKUP INDICATOR =====
-diff --git a/lib/widgets/backup_indicator.dart b/lib/widgets/backup_indicator.dart
-index ea524af..8a396c7 100644
---- a/lib/widgets/backup_indicator.dart
-+++ b/lib/widgets/backup_indicator.dart
-@@ -4,8 +4,8 @@ import 'package:flutter/material.dart';
- 
- import '../services/backup_status.dart';
- 
--/// Bulatan status backup untuk AppBar.
--/// Merah/biru bergantian = belum di-backup. Hijau = sudah di-backup.
-+/// Dua bulatan status di AppBar: ikon HP = backup lokal, ikon awan = Google
-+/// Drive. Merah/biru bergantian = belum di-backup. Hijau = sudah di-backup.
- class BackupIndicator extends StatefulWidget {
-   const BackupIndicator({super.key, this.onTap});
- 
-@@ -22,66 +22,102 @@ class _BackupIndicatorState extends State<BackupIndicator> {
-   @override
-   void initState() {
-     super.initState();
--    BackupStatus.instance.dirty.addListener(_onChanged);
-+    BackupStatus.instance.localDirty.addListener(_onChanged);
-+    BackupStatus.instance.driveDirty.addListener(_onChanged);
-     _syncTimer();
-   }
- 
-   @override
-   void dispose() {
--    BackupStatus.instance.dirty.removeListener(_onChanged);
-+    BackupStatus.instance.localDirty.removeListener(_onChanged);
-+    BackupStatus.instance.driveDirty.removeListener(_onChanged);
-     _timer?.cancel();
-     super.dispose();
-   }
- 
-+  bool get _anyDirty =>
-+      BackupStatus.instance.localDirty.value == true ||
-+      BackupStatus.instance.driveDirty.value == true;
-+
-   void _onChanged() {
-     _syncTimer();
-     if (mounted) setState(() {});
-   }
- 
-   void _syncTimer() {
--    final isDirty = BackupStatus.instance.dirty.value == true;
--
--    if (isDirty && _timer == null) {
-+    if (_anyDirty && _timer == null) {
-       _timer = Timer.periodic(const Duration(milliseconds: 600), (_) {
-         if (mounted) setState(() => _alt = !_alt);
-       });
--    } else if (!isDirty && _timer != null) {
-+    } else if (!_anyDirty && _timer != null) {
-       _timer!.cancel();
-       _timer = null;
-       _alt = false;
-     }
-   }
- 
-+  String _describe(bool? state) {
-+    if (state == null) return 'belum diketahui';
-+    return state ? 'ada perubahan belum di-backup' : 'sudah di-backup';
-+  }
-+
-+  Color _colorFor(bool? state) {
-+    if (state == null) return Colors.grey;
-+    if (state) return _alt ? Colors.blue : Colors.red;
-+    return Colors.green;
-+  }
-+
-+  Widget _item(IconData icon, bool? state) {
-+    final color = _colorFor(state);
-+    return Row(
-+      mainAxisSize: MainAxisSize.min,
-+      children: [
-+        Icon(icon, size: 18),
-+        const SizedBox(width: 4),
-+        AnimatedContainer(
-+          duration: const Duration(milliseconds: 250),
-+          width: 12,
-+          height: 12,
-+          decoration: BoxDecoration(
-+            color: color,
-+            shape: BoxShape.circle,
-+            boxShadow: [
-+              BoxShadow(
-+                color: color.withOpacity(0.5),
-+                blurRadius: 5,
-+                spreadRadius: 1,
-+              ),
-+            ],
-+          ),
-+        ),
-+      ],
-+    );
-+  }
-+
-   @override
-   Widget build(BuildContext context) {
--    final state = BackupStatus.instance.dirty.value;
-+    final local = BackupStatus.instance.localDirty.value;
-+    final drive = BackupStatus.instance.driveDirty.value;
- 
-     // Status belum diketahui: jangan tampilkan apa pun supaya tidak salah.
--    if (state == null) return const SizedBox.shrink();
--
--    final Color color = state
--        ? (_alt ? Colors.blue : Colors.red)
--        : Colors.green;
--
--    return IconButton(
--      tooltip: state
--          ? 'Ada perubahan yang belum di-backup ke Google Drive'
--          : 'Data sudah di-backup ke Google Drive',
--      onPressed: widget.onTap,
--      icon: AnimatedContainer(
--        duration: const Duration(milliseconds: 250),
--        width: 16,
--        height: 16,
--        decoration: BoxDecoration(
--          color: color,
--          shape: BoxShape.circle,
--          boxShadow: [
--            BoxShadow(
--              color: color.withOpacity(0.5),
--              blurRadius: 6,
--              spreadRadius: 1,
--            ),
--          ],
-+    if (local == null && drive == null) return const SizedBox.shrink();
-+
-+    return Tooltip(
-+      message: 'Backup lokal: ${_describe(local)}\n'
-+          'Backup Google Drive: ${_describe(drive)}',
-+      child: InkWell(
-+        onTap: widget.onTap,
-+        borderRadius: BorderRadius.circular(20),
-+        child: Padding(
-+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-+          child: Row(
-+            mainAxisSize: MainAxisSize.min,
-+            children: [
-+              _item(Icons.smartphone, local),
-+              const SizedBox(width: 10),
-+              _item(Icons.cloud_outlined, drive),
-+            ],
-+          ),
-         ),
-       ),
-     );
+===== FILE YANG AKAN DI-COMMIT =====
+M	.github/workflows/build-apk.yml
+M	lib/models.dart
+M	lib/screens/customer_screen.dart
+M	lib/screens/home_screen.dart
+A	lib/screens/receipt_image_screen.dart
+M	lib/screens/settings_screen.dart
+M	lib/services/backup_status.dart
+M	lib/services/google_drive_service.dart
+A	lib/services/shop_message_settings.dart
+M	lib/status_style.dart
+M	lib/utils.dart
+M	lib/widgets/backup_indicator.dart
+M	pubspec.yaml
+M	test/utils_test.dart
 
-===== FILE PNG =====
-import 'dart:typed_data';
-import 'dart:ui' as ui;
+===== RINGKASAN PERUBAHAN =====
+ .github/workflows/build-apk.yml         |  24 +++
+ lib/models.dart                         |  57 +++--
+ lib/screens/customer_screen.dart        |  92 +++++++-
+ lib/screens/home_screen.dart            | 101 ++++++++-
+ lib/screens/receipt_image_screen.dart   | 369 ++++++++++++++++++++++++++++++++
+ lib/screens/settings_screen.dart        | 107 +++++++++
+ lib/services/backup_status.dart         |  77 ++++---
+ lib/services/google_drive_service.dart  |  28 ++-
+ lib/services/shop_message_settings.dart |  33 +++
+ lib/status_style.dart                   |   3 +
+ lib/utils.dart                          |  56 ++++-
+ lib/widgets/backup_indicator.dart       | 104 ++++++---
+ pubspec.yaml                            |   4 +
+ test/utils_test.dart                    |  58 +++++
+ 14 files changed, 1009 insertions(+), 104 deletions(-)
 
-import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
-import 'package:gal/gal.dart';
-import 'package:share_plus/share_plus.dart';
+===== PEMERIKSAAN PATCH =====
 
-import '../models.dart';
-import '../services/shop_message_settings.dart';
-import '../utils.dart';
-
-class ReceiptImageScreen extends StatefulWidget {
-  final Customer customer;
-  final List<Txn> txns;
-  final int balance;
-  final ShopMessageSettings shopSettings;
-  final bool settlement;
-
-  const ReceiptImageScreen({
-    super.key,
-    required this.customer,
-    required this.txns,
-    required this.balance,
-    required this.shopSettings,
-    required this.settlement,
-  });
-
-  @override
-  State<ReceiptImageScreen> createState() => _ReceiptImageScreenState();
-}
-
-class _ReceiptImageScreenState extends State<ReceiptImageScreen> {
-  final GlobalKey _imageKey = GlobalKey();
-  Uint8List? _pngBytes;
-  bool _working = false;
-
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _capture());
-  }
-
-  String get _fileName {
-    final safeName = widget.customer.name
-        .trim()
-        .replaceAll(RegExp(r'[^a-zA-Z0-9_-]+'), '_');
-    final kind = widget.settlement ? 'pelunasan' : 'rekap';
-    final now = DateTime.now();
-    final stamp = '${now.year}${now.month.toString().padLeft(2, '0')}'
-        '${now.day.toString().padLeft(2, '0')}_'
-        '${now.hour.toString().padLeft(2, '0')}'
-        '${now.minute.toString().padLeft(2, '0')}'
-        '${now.second.toString().padLeft(2, '0')}';
-    return '${kind}_${safeName}_$stamp.png';
-  }
-
-  Future<void> _capture() async {
-    try {
-      await WidgetsBinding.instance.endOfFrame;
-      final boundary = _imageKey.currentContext?.findRenderObject()
-          as RenderRepaintBoundary?;
-      if (boundary == null || !boundary.hasSize) {
-        throw Exception('Pratinjau gambar belum siap.');
-      }
-
-      final ui.Image image = await boundary.toImage(pixelRatio: 3);
-      try {
-        final data = await image.toByteData(format: ui.ImageByteFormat.png);
-        if (data == null) throw Exception('Gagal membuat data PNG.');
-        if (!mounted) return;
-        setState(() => _pngBytes = data.buffer.asUint8List());
-      } finally {
-        image.dispose();
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Gagal menyiapkan PNG: $e')),
-        );
-      }
-    }
-  }
-
-  Future<void> _save() async {
-    final bytes = _pngBytes;
-    if (bytes == null || _working) return;
-
-    setState(() => _working = true);
-    try {
-      await Gal.putImageBytes(
-        bytes,
-        name: _fileName.replaceAll('.png', ''),
-      );
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('PNG berhasil disimpan ke galeri.')),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Gagal menyimpan PNG: $e')),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _working = false);
-    }
-  }
-
-  Future<void> _share() async {
-    final bytes = _pngBytes;
-    if (bytes == null || _working) return;
-
-    setState(() => _working = true);
-    try {
-      await Share.shareXFiles(
-        [
-          XFile.fromData(
-            bytes,
-            mimeType: 'image/png',
-            name: _fileName,
-          ),
-        ],
-        fileNameOverrides: [_fileName],
-      );
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Gagal membagikan PNG: $e')),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _working = false);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final sorted = [...widget.txns]..sort((a, b) {
-        final byDate = a.date.compareTo(b.date);
-        return byDate != 0 ? byDate : (a.id ?? 0).compareTo(b.id ?? 0);
-      });
-
-    final totalDebt = sorted
-        .where((t) => t.type == TxnType.utang)
-        .fold<int>(0, (sum, t) => sum + t.amount);
-    final totalPaid = sorted
-        .where((t) => t.type == TxnType.bayar)
-        .fold<int>(0, (sum, t) => sum + t.amount);
-
-    final settings = widget.shopSettings;
-    final isSettlement = widget.settlement;
-
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(isSettlement ? 'Bukti Pelunasan PNG' : 'Rekap PNG'),
-      ),
-      body: Column(
-        children: [
-          Expanded(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(12),
-              child: Center(
-                child: RepaintBoundary(
-                  key: _imageKey,
-                  child: Container(
-                    width: 360,
-                    padding: const EdgeInsets.all(22),
-                    color: Colors.white,
-                    child: DefaultTextStyle(
-                      style: const TextStyle(
-                        color: Colors.black87,
-                        fontSize: 13,
-                        height: 1.45,
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          if (settings.header.trim().isNotEmpty) ...[
-                            Text(
-                              settings.header.trim(),
-                              textAlign: TextAlign.center,
-                            ),
-                            const SizedBox(height: 12),
-                          ],
-                          if (settings.shopName.trim().isNotEmpty)
-                            Text(
-                              settings.shopName.trim(),
-                              textAlign: TextAlign.center,
-                              style: const TextStyle(
-                                fontSize: 21,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          const SizedBox(height: 12),
-                          const Divider(color: Colors.black54, thickness: 1.5),
-                          Text(
-                            isSettlement ? 'BUKTI PELUNASAN' : 'REKAP TRANSAKSI',
-                            textAlign: TextAlign.center,
-                            style: const TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                              letterSpacing: 1,
-                            ),
-                          ),
-                          const SizedBox(height: 14),
-                          _infoRow('Nama pelanggan', widget.customer.name),
-                          _infoRow('Tanggal cetak', tglJam(DateTime.now())),
-                          if (widget.customer.phone.trim().isNotEmpty)
-                            _infoRow('Telepon', widget.customer.phone),
-                          const Divider(color: Colors.black26),
-                          if (isSettlement) ...[
-                            _infoRow('Status', 'LUNAS'),
-                            _infoRow('Total utang', rupiah(totalDebt)),
-                            _infoRow('Total pembayaran', rupiah(totalPaid)),
-                          ] else ...[
-                            _infoRow(
-                              widget.balance < 0
-                                  ? 'Piutang pelanggan'
-                                  : 'Sisa utang',
-                              rupiah(widget.balance),
-                            ),
-                            _infoRow('Jumlah transaksi', '${sorted.length}'),
-                          ],
-                          const SizedBox(height: 14),
-                          const Text(
-                            'RINCIAN TRANSAKSI',
-                            style: TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                          const Divider(color: Colors.black54),
-                          if (sorted.isEmpty)
-                            const Text('Belum ada transaksi.')
-                          else
-                            for (final txn in sorted)
-                              Padding(
-                                padding:
-                                    const EdgeInsets.symmetric(vertical: 5),
-                                child: Row(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          Text(
-                                            txn.type == TxnType.utang
-                                                ? 'UTANG'
-                                                : 'PEMBAYARAN',
-                                            style: const TextStyle(
-                                              fontWeight: FontWeight.bold,
-                                            ),
-                                          ),
-                                          Text(tglJam(txn.date)),
-                                          if (txn.note.trim().isNotEmpty)
-                                            Text(txn.note.trim()),
-                                        ],
-                                      ),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Text(
-                                      '${txn.type == TxnType.utang ? '+' : '-'}${rupiah(txn.amount)}',
-                                      textAlign: TextAlign.right,
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                          const Divider(color: Colors.black54),
-                          if (isSettlement)
-                            const Text(
-                              'Pembayaran telah menyelesaikan siklus utang ini.',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(fontWeight: FontWeight.bold),
-                            )
-                          else
-                            Text(
-
-===== SHOP SETTINGS SERVICE =====
-import 'package:shared_preferences/shared_preferences.dart';
-
-class ShopMessageSettings {
-  const ShopMessageSettings({
-    this.shopName = '',
-    this.header = '',
-    this.footer = '',
-  });
-
-  final String shopName;
-  final String header;
-  final String footer;
-
-  static const _nameKey = 'shop_message_name';
-  static const _headerKey = 'shop_message_header';
-  static const _footerKey = 'shop_message_footer';
-
-  static Future<ShopMessageSettings> load() async {
-    final prefs = SharedPreferencesAsync();
-    return ShopMessageSettings(
-      shopName: await prefs.getString(_nameKey) ?? '',
-      header: await prefs.getString(_headerKey) ?? '',
-      footer: await prefs.getString(_footerKey) ?? '',
-    );
-  }
-
-  Future<void> save() async {
-    final prefs = SharedPreferencesAsync();
-    await prefs.setString(_nameKey, shopName.trim());
-    await prefs.setString(_headerKey, header.trim());
-    await prefs.setString(_footerKey, footer.trim());
-  }
-}
-
-===== TEST SALDO =====
-diff --git a/test/utils_test.dart b/test/utils_test.dart
-index d24f41a..fa8c0a9 100644
---- a/test/utils_test.dart
-+++ b/test/utils_test.dart
-@@ -93,6 +93,64 @@ void main() {
-     expect(msg, contains('20 Nov 2026'));
-   });
- 
-+
-+  test('pembayaran berlebih menghasilkan saldo piutang', () {
-+    final txns = [
-+      utang(100000, DateTime(2026, 1, 1)),
-+      bayar(150000, DateTime(2026, 1, 2)),
-+    ];
-+
-+    expect(computeBalance(txns), -50000);
-+
-+    final customer = Customer(
-+      id: 1,
-+      name: 'Bu Ani',
-+      createdAt: DateTime(2026, 1, 1),
-+    );
-+
-+    final summary = CustomerSummary(
-+      customer: customer,
-+      balance: computeBalance(txns),
-+    );
-+
-+    expect(summary.status(), DebtStatus.piutang);
-+  });
-+
-+  test('kredit lama mengurangi utang baru', () {
-+    final txns = [
-+      utang(100000, DateTime(2026, 1, 1)),
-+      bayar(150000, DateTime(2026, 1, 2)),
-+      utang(70000, DateTime(2026, 1, 3),
-+          due: DateTime(2026, 1, 20)),
-+    ];
-+
-+    expect(computeBalance(txns), 20000);
-+    expect(nextDueDate(txns), DateTime(2026, 1, 20));
-+  });
-+
-+  test('saldo negatif tidak dianggap siklus lunas', () {
-+    final txns = [
-+      utang(100000, DateTime(2026, 1, 1)),
-+      bayar(150000, DateTime(2026, 1, 2)),
-+    ];
-+
-+    expect(activeDebtCycle(txns), hasLength(2));
-+    expect(latestClosedDebtCycle(txns), isEmpty);
-+  });
-+
-+  test('siklus ditutup ketika saldo kembali tepat nol', () {
-+    final txns = [
-+      utang(100000, DateTime(2026, 1, 1)),
-+      bayar(150000, DateTime(2026, 1, 2)),
-+      utang(70000, DateTime(2026, 1, 3)),
-+      bayar(20000, DateTime(2026, 1, 4)),
-+    ];
-+
-+    expect(computeBalance(txns), 0);
-+    expect(activeDebtCycle(txns), isEmpty);
-+    expect(latestClosedDebtCycle(txns), hasLength(4));
-+  });
-+
-   test('waUri menyandikan teks', () {
-     final uri = waUri('08123456789', 'Halo dunia');
-     expect(uri.host, 'wa.me');
-
-===== REFERENSI STATUS BACKUP =====
-lib/screens/settings_screen.dart:216:        await BackupStatus.instance.markLocalBackedUp(revision);
-lib/services/backup_status.dart:20:  final ValueNotifier<bool?> driveDirty = ValueNotifier<bool?>(null);
-lib/services/backup_status.dart:21:  final ValueNotifier<bool?> localDirty = ValueNotifier<bool?>(null);
-lib/services/backup_status.dart:46:      driveDirty.value ??= drive ?? hasData;
-lib/services/backup_status.dart:47:      localDirty.value ??= local ?? hasData;
-lib/services/backup_status.dart:49:      if (drive == null) await _persist(_driveKey, driveDirty.value ?? hasData);
-lib/services/backup_status.dart:50:      if (local == null) await _persist(_localKey, localDirty.value ?? hasData);
-lib/services/backup_status.dart:53:      driveDirty.value ??= hasData;
-lib/services/backup_status.dart:54:      localDirty.value ??= hasData;
-lib/services/backup_status.dart:60:    driveDirty.value = true;
-lib/services/backup_status.dart:61:    localDirty.value = true;
-lib/services/backup_status.dart:68:  Future<void> markDriveBackedUp(int revision) async {
-lib/services/backup_status.dart:70:    driveDirty.value = false;
-lib/services/backup_status.dart:74:  /// Sama seperti [markDriveBackedUp], untuk backup file lokal.
-lib/services/backup_status.dart:75:  Future<void> markLocalBackedUp(int revision) async {
-lib/services/backup_status.dart:77:    localDirty.value = false;
-lib/services/backup_status.dart:82:  Future<void> markBackedUp(int revision) => markDriveBackedUp(revision);
-lib/widgets/backup_indicator.dart:25:    BackupStatus.instance.localDirty.addListener(_onChanged);
-lib/widgets/backup_indicator.dart:26:    BackupStatus.instance.driveDirty.addListener(_onChanged);
-lib/widgets/backup_indicator.dart:32:    BackupStatus.instance.localDirty.removeListener(_onChanged);
-lib/widgets/backup_indicator.dart:33:    BackupStatus.instance.driveDirty.removeListener(_onChanged);
-lib/widgets/backup_indicator.dart:39:      BackupStatus.instance.localDirty.value == true ||
-lib/widgets/backup_indicator.dart:40:      BackupStatus.instance.driveDirty.value == true;
-lib/widgets/backup_indicator.dart:99:    final local = BackupStatus.instance.localDirty.value;
-lib/widgets/backup_indicator.dart:100:    final drive = BackupStatus.instance.driveDirty.value;
+===== STATUS GIT =====
+M  .github/workflows/build-apk.yml
+M  lib/models.dart
+M  lib/screens/customer_screen.dart
+M  lib/screens/home_screen.dart
+A  lib/screens/receipt_image_screen.dart
+M  lib/screens/settings_screen.dart
+M  lib/services/backup_status.dart
+M  lib/services/google_drive_service.dart
+A  lib/services/shop_message_settings.dart
+M  lib/status_style.dart
+M  lib/utils.dart
+M  lib/widgets/backup_indicator.dart
+M  pubspec.yaml
+M  test/utils_test.dart
+?? add_backup_indicator.sh
+?? backup_app_lock_integrity_20261116_210514/
+?? backup_app_lock_recovery_20261116_210009/
+?? backup_app_lock_safe_20261116_205501/
+?? backup_app_lock_safe_20261116_205635/
+?? backup_app_lock_safe_20261116_205712/
+?? backup_app_lock_storage_20261116_211528/
+?? backup_auto_backup_dependencies_20261116_234527/
+?? backup_backup_status_race_20261116_231910/
+?? backup_before_revert_lightweight_20261115_133121/
+?? backup_cloud_reconnect_20261115_133235/
+?? backup_diagnostik_google_20261115_111942/
+?? backup_fix_google_import_20261115_104148/
+?? backup_google_lightweight_restore_20261116_233447/
+?? backup_google_login_20261114_185251/
+?? backup_google_restore_20261115_132224/
+?? backup_google_session_20261115_102650/
+?? backup_google_session_fix_20261115_123805/
+?? backup_google_session_fix_20261115_124655/
+?? backup_guard_whatsapp_20261116_230413/
+?? backup_guard_whatsapp_20261116_230532/
+?? backup_guard_whatsapp_v2_20261116_230720/
+?? backup_listener_google_20261115_125040/
+?? backup_pengaturan_warung_20261116_222928/
+?? backup_png_filename_20261117_061635/
+?? backup_remove_app_lock_20261116_213512/
+?? backup_remove_app_lock_20261116_213908/
+?? backup_saldo_piutang_20261116_221958/
+?? backup_sebelum_cloud_ui_20261114_225058/
+?? backup_sebelum_cloud_ui_20261114_225846/
+?? backup_sebelum_fix_sqlite_20261114_231957/
+?? backup_sebelum_google_20261114_184301/
+?? backup_sebelum_integrasi_drive_20261114_221515/
+?? backup_sebelum_pin_ffi_20261114_230953/
+?? backup_sebelum_pin_shared_preferences_20261115_124930/
+?? backup_sebelum_settings_20261114_164203/
+?? backup_sebelum_test_restore_20261114_230544/
+?? backup_sebelum_update_siklus/
+?? backup_sebelum_whatsapp_gambar_20261116_221203/
+?? backup_settings_warung_ui_20261116_223241/
+?? backup_status_google_20261114_192221/
+?? backup_switch_png_20261117_062447/
+?? backup_whatsapp_newline_20261116_225847/
+?? fix_diag.sh
+?? fix_google_session.sh
+?? fix_ux.sh
+?? patch_google_session.py
+?? patchv3.py
+?? tambah_fitur.sh
+?? test/utils_test.dart.backup_20261117_070428
