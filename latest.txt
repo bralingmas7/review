@@ -1,34 +1,8 @@
-===== DEPENDENCY =====
-23-  connectivity_plus: ^7.3.2
-24-  gal: ^2.3.3
-25:  share_plus: ^13.3.1
-26-
-27-dev_dependencies:
-
-===== API SHARE PNG =====
-114-
-115-    setState(() => _working = true);
-116-    try {
-117:      await SharePlus.instance.share(
-118-        ShareParams(
-119-          files: [
-120-            XFile.fromData(
-121-              bytes,
-122-              mimeType: 'image/png',
-123-              name: _fileName,
-124-            ),
-125-          ],
-126-          fileNameOverrides: [_fileName],
-127-        ),
-128-      );
-129-    } catch (e) {
-130-      if (mounted) {
-131-        ScaffoldMessenger.of(context).showSnackBar(
-
-===== API LAMA =====
-OK: API lama tidak ditemukan
+===== FILE STAGED =====
 
 ===== DIFF CHECK =====
+
+===== DIFF STAT =====
 
 ===== STATUS GIT =====
  M lib/screens/receipt_image_screen.dart
@@ -85,5 +59,6 @@ OK: API lama tidak ditemukan
 ?? tambah_fitur.sh
 ?? test/utils_test.dart.backup_20261117_070428
 
-===== BACKUP =====
-backup_fix_share_dependency_20261117_115727
+===== DIFF PUBSPEC =====
+
+===== DIFF SHARE PNG =====
