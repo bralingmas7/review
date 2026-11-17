@@ -1,12 +1,17 @@
 ===== FILE STAGED =====
+M	lib/screens/receipt_image_screen.dart
+M	pubspec.yaml
 
 ===== DIFF CHECK =====
 
 ===== DIFF STAT =====
+ lib/screens/receipt_image_screen.dart | 20 +++++++++++---------
+ pubspec.yaml                          |  2 +-
+ 2 files changed, 12 insertions(+), 10 deletions(-)
 
-===== STATUS GIT =====
- M lib/screens/receipt_image_screen.dart
- M pubspec.yaml
+===== STATUS =====
+M  lib/screens/receipt_image_screen.dart
+M  pubspec.yaml
 ?? add_backup_indicator.sh
 ?? backup_app_lock_integrity_20261116_210514/
 ?? backup_app_lock_recovery_20261116_210009/
@@ -58,7 +63,3 @@
 ?? patchv3.py
 ?? tambah_fitur.sh
 ?? test/utils_test.dart.backup_20261117_070428
-
-===== DIFF PUBSPEC =====
-
-===== DIFF SHARE PNG =====
