@@ -1,0 +1,965 @@
+===== DIFF PUBSPEC =====
+diff --git a/pubspec.yaml b/pubspec.yaml
+index 90d41c3..85637be 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -19,6 +19,10 @@ dependencies:
+   extension_google_sign_in_as_googleapis_auth: ^3.0.0
+   cryptography: ^2.7.0
+   shared_preferences: 2.3.1
++  flutter_secure_storage: ^11.2.0
++  connectivity_plus: ^7.3.2
++  gal: ^2.3.3
++  share_plus: ^10.1.4
+ 
+ dev_dependencies:
+   flutter_test:
+
+===== DIFF MODELS =====
+diff --git a/lib/models.dart b/lib/models.dart
+index 13f2521..1c1db2f 100644
+--- a/lib/models.dart
++++ b/lib/models.dart
+@@ -1,6 +1,6 @@
+ enum TxnType { utang, bayar }
+ 
+-enum DebtStatus { lunas, lancar, mendekati, telat }
++enum DebtStatus { piutang, lunas, lancar, mendekati, telat }
+ 
+ DateTime dateOnly(DateTime d) => DateTime(d.year, d.month, d.day);
+ 
+@@ -110,20 +110,42 @@ int computeBalance(List<Txn> txns) => txns.fold<int>(
+ /// Jatuh tempo terdekat dari utang yang belum tertutup.
+ /// Pembayaran dialokasikan ke utang paling lama lebih dulu (FIFO).
+ DateTime? nextDueDate(List<Txn> txns) {
+-  var credit = txns
+-      .where((t) => t.type == TxnType.bayar)
+-      .fold<int>(0, (sum, t) => sum + t.amount);
+-  final debts = txns.where((t) => t.type == TxnType.utang).toList()
+-    ..sort((a, b) => a.date.compareTo(b.date));
++  final ordered = [...txns]..sort((a, b) {
++    final byDate = a.date.compareTo(b.date);
++    return byDate != 0 ? byDate : (a.id ?? 0).compareTo(b.id ?? 0);
++  });
+ 
+-  DateTime? earliest;
+-  for (final d in debts) {
+-    if (credit >= d.amount) {
+-      credit -= d.amount;
+-      continue;
++  // Pembayaran dialokasikan secara kronologis ke utang tertua (FIFO).
++  // Kelebihan pembayaran menjadi kredit untuk utang berikutnya.
++  final outstanding = <MapEntry<Txn, int>>[];
++  var credit = 0;
++
++  for (final t in ordered) {
++    if (t.type == TxnType.utang) {
++      final remaining = t.amount - credit;
++      credit = remaining < 0 ? -remaining : 0;
++      if (remaining > 0) {
++        outstanding.add(MapEntry(t, remaining));
++      }
++    } else {
++      var payment = t.amount;
++      while (payment > 0 && outstanding.isNotEmpty) {
++        final first = outstanding.removeAt(0);
++        final left = first.value - payment;
++        if (left > 0) {
++          outstanding.insert(0, MapEntry(first.key, left));
++          payment = 0;
++        } else {
++          payment = -left;
++        }
++      }
++      credit += payment;
+     }
+-    credit = 0;
+-    final due = d.dueDate;
++  }
++
++  DateTime? earliest;
++  for (final item in outstanding) {
++    final due = item.key.dueDate;
+     if (due != null && (earliest == null || due.isBefore(earliest))) {
+       earliest = due;
+     }
+@@ -145,7 +167,8 @@ class CustomerSummary {
+   });
+ 
+   DebtStatus status([DateTime? now]) {
+-    if (balance <= 0) return DebtStatus.lunas;
++    if (balance < 0) return DebtStatus.piutang;
++    if (balance == 0) return DebtStatus.lunas;
+     final due = nextDue;
+     if (due == null) return DebtStatus.lancar;
+     final today = dateOnly(now ?? DateTime.now());
+@@ -198,9 +221,8 @@ List<Txn> activeDebtCycle(List<Txn> txns) {
+     cycle.add(t);
+     balance += t.type == TxnType.utang ? t.amount : -t.amount;
+ 
+-    if (balance <= 0) {
++    if (balance == 0) {
+       cycle.clear();
+-      balance = 0;
+     }
+   }
+ 
+@@ -217,12 +239,11 @@ List<Txn> latestClosedDebtCycle(List<Txn> txns) {
+     cycle.add(t);
+     balance += t.type == TxnType.utang ? t.amount : -t.amount;
+ 
+-    if (balance <= 0) {
++    if (balance == 0) {
+       if (cycle.any((item) => item.type == TxnType.utang)) {
+         latestClosed = List<Txn>.from(cycle);
+       }
+       cycle.clear();
+-      balance = 0;
+     }
+   }
+ 
+
+===== DIFF CUSTOMER SCREEN =====
+diff --git a/lib/screens/customer_screen.dart b/lib/screens/customer_screen.dart
+index c9b5bc9..ae861ae 100644
+--- a/lib/screens/customer_screen.dart
++++ b/lib/screens/customer_screen.dart
+@@ -7,6 +7,8 @@ import '../dialogs.dart';
+ import '../models.dart';
+ import '../status_style.dart';
+ import '../utils.dart';
++import '../services/shop_message_settings.dart';
++import 'receipt_image_screen.dart';
+ 
+ class CustomerScreen extends StatefulWidget {
+   final int customerId;
+@@ -69,7 +71,7 @@ class _CustomerScreenState extends State<CustomerScreen> {
+     final newBalance = computeBalance(_txns);
+     _snack(type == TxnType.utang ? 'Utang dicatat' : 'Pembayaran dicatat');
+ 
+-    if (type == TxnType.bayar && oldBalance > 0 && newBalance <= 0) {
++    if (type == TxnType.bayar && oldBalance > 0 && newBalance == 0) {
+       await _sendSettlementReceipt();
+     }
+   }
+@@ -102,7 +104,14 @@ class _CustomerScreenState extends State<CustomerScreen> {
+ 
+     if (send != true || !mounted) return;
+ 
+-    final msg = buildSettlementReceipt(name: c.name, txns: cycle);
++    final messageSettings = await ShopMessageSettings.load();
++    final msg = buildSettlementReceipt(
++      name: c.name,
++      txns: cycle,
++      shopName: messageSettings.shopName,
++      header: messageSettings.header,
++      footer: messageSettings.footer,
++    );
+     var opened = false;
+ 
+     try {
+@@ -134,11 +143,22 @@ class _CustomerScreenState extends State<CustomerScreen> {
+ 
+   Future<void> _tagih() async {
+     final c = _customer!;
++    final balance = computeBalance(_txns);
++    if (balance <= 0) {
++      _snack('Tidak ada utang yang perlu ditagih.');
++      return;
++    }
++
++    final messageSettings = await ShopMessageSettings.load();
++    final cycle = activeDebtCycle(_txns);
+     final msg = buildReminder(
+       name: c.name,
+-      balance: computeBalance(_txns),
+-      due: nextDueDate(activeDebtCycle(_txns)),
+-      txns: activeDebtCycle(_txns),
++      balance: balance,
++      due: nextDueDate(cycle),
++      txns: cycle,
++      shopName: messageSettings.shopName,
++      header: messageSettings.header,
++      footer: messageSettings.footer,
+     );
+     bool ok;
+     try {
+@@ -165,6 +185,33 @@ class _CustomerScreenState extends State<CustomerScreen> {
+     if (mounted) _snack('Rekap disalin');
+   }
+ 
++  Future<void> _openPng({required bool settlement}) async {
++    final c = _customer!;
++    final selectedTxns =
++        settlement ? latestClosedDebtCycle(_txns) : List<Txn>.from(_txns);
++
++    if (settlement && selectedTxns.isEmpty) {
++      _snack('Belum ada siklus utang yang lunas.');
++      return;
++    }
++
++    final settings = await ShopMessageSettings.load();
++    if (!mounted) return;
++
++    await Navigator.push<void>(
++      context,
++      MaterialPageRoute(
++        builder: (_) => ReceiptImageScreen(
++          customer: c,
++          txns: selectedTxns,
++          balance: computeBalance(_txns),
++          shopSettings: settings,
++          settlement: settlement,
++        ),
++      ),
++    );
++  }
++
+   Future<void> _edit() async {
+     final updated = await showCustomerForm(context, existing: _customer);
+     if (updated == null) return;
+@@ -214,16 +261,34 @@ class _CustomerScreenState extends State<CustomerScreen> {
+               switch (v) {
+                 case 'edit':
+                   _edit();
++                  break;
+                 case 'recap':
+                   _copyRecap();
++                  break;
++                case 'recap_png':
++                  _openPng(settlement: false);
++                  break;
++                case 'settlement_png':
++                  _openPng(settlement: true);
++                  break;
+                 case 'delete':
+                   _deleteCustomer();
++                  break;
+               }
+             },
+-            itemBuilder: (_) => const [
+-              PopupMenuItem(value: 'edit', child: Text('Ubah data')),
+-              PopupMenuItem(value: 'recap', child: Text('Salin rekap')),
+-              PopupMenuItem(value: 'delete', child: Text('Hapus pelanggan')),
++            itemBuilder: (_) => [
++              const PopupMenuItem(value: 'edit', child: Text('Ubah data')),
++              const PopupMenuItem(value: 'recap', child: Text('Salin rekap')),
++              const PopupMenuItem(
++                value: 'recap_png',
++                child: Text('Simpan rekap sebagai PNG'),
++              ),
++              if (latestClosedDebtCycle(_txns).isNotEmpty)
++                const PopupMenuItem(
++                  value: 'settlement_png',
++                  child: Text('Bukti pelunasan PNG'),
++                ),
++              const PopupMenuItem(value: 'delete', child: Text('Hapus pelanggan')),
+             ],
+           ),
+         ],
+@@ -269,10 +334,15 @@ class _Header extends StatelessWidget {
+               child: Column(
+                 crossAxisAlignment: CrossAxisAlignment.start,
+                 children: [
+-                  Text('Sisa utang', style: theme.textTheme.labelLarge),
++                  Text(
++                    status == DebtStatus.piutang
++                        ? 'Piutang pelanggan'
++                        : 'Sisa utang',
++                    style: theme.textTheme.labelLarge,
++                  ),
+                   const SizedBox(height: 4),
+                   Text(
+-                    rupiah(summary.balance),
++                    rupiah(summary.balance.abs()),
+                     style: theme.textTheme.headlineMedium?.copyWith(
+                       fontWeight: FontWeight.bold,
+                       color: status == DebtStatus.lunas ? null : color,
+
+===== DIFF SETTINGS SCREEN =====
+diff --git a/lib/screens/settings_screen.dart b/lib/screens/settings_screen.dart
+index 584f9f0..e75de9b 100644
+--- a/lib/screens/settings_screen.dart
++++ b/lib/screens/settings_screen.dart
+@@ -10,6 +10,7 @@ import '../db.dart';
+ import '../services/backup_crypto_service.dart';
+ import '../services/backup_status.dart';
+ import '../services/google_drive_service.dart';
++import '../services/shop_message_settings.dart';
+ 
+ class SettingsScreen extends StatefulWidget {
+   const SettingsScreen({super.key});
+@@ -20,6 +21,11 @@ class SettingsScreen extends StatefulWidget {
+ 
+ class _SettingsScreenState extends State<SettingsScreen> {
+   bool _busy = false;
++  bool _savingShop = false;
++  final _shopNameController = TextEditingController();
++  final _shopHeaderController = TextEditingController();
++  final _shopFooterController = TextEditingController();
++
+   String? _googleEmail;
+   String _googleRestoreStatus = 'Belum diperiksa';
+   StreamSubscription<GoogleSignInAccount?>? _googleAccountSubscription;
+@@ -27,6 +33,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
+   @override
+   void initState() {
+     super.initState();
++    _loadShopSettings();
+ 
+     final google = GoogleDriveService.instance;
+     _googleEmail = google.account?.email;
+@@ -51,9 +58,48 @@ class _SettingsScreenState extends State<SettingsScreen> {
+     _restoreGoogleStatus();
+   }
+ 
++  Future<void> _loadShopSettings() async {
++    try {
++      final settings = await ShopMessageSettings.load();
++      if (!mounted) return;
++      _shopNameController.text = settings.shopName;
++      _shopHeaderController.text = settings.header;
++      _shopFooterController.text = settings.footer;
++    } catch (e) {
++      debugPrint('Gagal memuat pengaturan warung: $e');
++    }
++  }
++
++  Future<void> _saveShopSettings() async {
++    if (_savingShop) return;
++    setState(() => _savingShop = true);
++    try {
++      await ShopMessageSettings(
++        shopName: _shopNameController.text,
++        header: _shopHeaderController.text,
++        footer: _shopFooterController.text,
++      ).save();
++
++      if (!mounted) return;
++      ScaffoldMessenger.of(context).showSnackBar(
++        const SnackBar(content: Text('Pengaturan warung berhasil disimpan.')),
++      );
++    } catch (e) {
++      if (!mounted) return;
++      ScaffoldMessenger.of(context).showSnackBar(
++        SnackBar(content: Text('Gagal menyimpan pengaturan: $e')),
++      );
++    } finally {
++      if (mounted) setState(() => _savingShop = false);
++    }
++  }
++
+   @override
+   void dispose() {
+     _googleAccountSubscription?.cancel();
++    _shopNameController.dispose();
++    _shopHeaderController.dispose();
++    _shopFooterController.dispose();
+     super.dispose();
+   }
+ 
+@@ -149,6 +195,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
+     setState(() => _busy = true);
+ 
+     try {
++      final revision = BackupStatus.instance.revision;
+       final data = await AppDb.instance.exportBackup();
+       final json = const JsonEncoder.withIndent('  ').convert(data);
+       final now = DateTime.now();
+@@ -166,6 +213,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
+       );
+ 
+       if (result != null) {
++        await BackupStatus.instance.markLocalBackedUp(revision);
+         _message('File backup berhasil disimpan.');
+       }
+     } catch (e) {
+@@ -490,6 +538,64 @@ class _SettingsScreenState extends State<SettingsScreen> {
+       body: ListView(
+         padding: const EdgeInsets.all(16),
+         children: [
++          Card(
++            child: Padding(
++              padding: const EdgeInsets.all(16),
++              child: Column(
++                crossAxisAlignment: CrossAxisAlignment.start,
++                children: [
++                  const ListTile(
++                    contentPadding: EdgeInsets.zero,
++                    leading: Icon(Icons.storefront_outlined),
++                    title: Text('Identitas warung'),
++                    subtitle: Text(
++                      'Nama dan format pesan untuk penagihan serta bukti pelunasan.',
++                    ),
++                  ),
++                  TextField(
++                    controller: _shopNameController,
++                    decoration: const InputDecoration(
++                      labelText: 'Nama warung',
++                      hintText: 'Contoh: Warung Berkah',
++                    ),
++                    textCapitalization: TextCapitalization.words,
++                  ),
++                  const SizedBox(height: 12),
++                  TextField(
++                    controller: _shopHeaderController,
++                    decoration: const InputDecoration(
++                      labelText: 'Header / pembuka pesan',
++                      hintText: 'Teks pembuka (opsional)',
++                    ),
++                    minLines: 1,
++                    maxLines: 3,
++                  ),
++                  const SizedBox(height: 12),
++                  TextField(
++                    controller: _shopFooterController,
++                    decoration: const InputDecoration(
++                      labelText: 'Footer / penutup pesan',
++                      hintText: 'Teks penutup (opsional)',
++                    ),
++                    minLines: 1,
++                    maxLines: 3,
++                  ),
++                  const SizedBox(height: 16),
++                  SizedBox(
++                    width: double.infinity,
++                    child: FilledButton.icon(
++                      onPressed: _savingShop ? null : _saveShopSettings,
++                      icon: const Icon(Icons.save_outlined),
++                      label: Text(
++                        _savingShop ? 'Menyimpan...' : 'Simpan pengaturan warung',
++                      ),
++                    ),
++                  ),
++                ],
++              ),
++            ),
++          ),
++          const SizedBox(height: 12),
+           Card(
+             child: Column(
+               children: [
+@@ -540,6 +646,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
+             ),
+           ),
+           const SizedBox(height: 12),
++          const SizedBox(height: 12),
+           Card(
+             child: Padding(
+               padding: const EdgeInsets.all(16),
+
+===== DIFF HOME SCREEN =====
+diff --git a/lib/screens/home_screen.dart b/lib/screens/home_screen.dart
+index 336b168..17e7df0 100644
+--- a/lib/screens/home_screen.dart
++++ b/lib/screens/home_screen.dart
+@@ -1,10 +1,13 @@
+ import 'package:flutter/material.dart';
++import 'package:flutter/services.dart';
++import 'package:url_launcher/url_launcher.dart';
+ 
+ import '../db.dart';
+ import '../dialogs.dart';
+ import '../models.dart';
+ import '../status_style.dart';
+ import '../utils.dart';
++import '../services/shop_message_settings.dart';
+ import 'customer_screen.dart';
+ import 'settings_screen.dart';
+ import '../services/backup_status.dart';
+@@ -36,6 +39,55 @@ class _HomeScreenState extends State<HomeScreen> {
+     await _load();
+   }
+ 
++  Future<void> _tagihCepat(CustomerSummary s) async {
++    final c = s.customer;
++    final txns = await AppDb.instance.txnsFor(c.id!);
++    if (!mounted) return;
++
++    final balance = computeBalance(txns);
++    if (balance <= 0) {
++      ScaffoldMessenger.of(context).showSnackBar(
++        const SnackBar(
++          content: Text('Tidak ada utang yang perlu ditagih.'),
++        ),
++      );
++      return;
++    }
++
++    final cycle = activeDebtCycle(txns);
++    final messageSettings = await ShopMessageSettings.load();
++    final msg = buildReminder(
++      name: c.name,
++      balance: balance,
++      due: nextDueDate(cycle),
++      txns: cycle,
++      shopName: messageSettings.shopName,
++      header: messageSettings.header,
++      footer: messageSettings.footer,
++    );
++
++    bool ok;
++    try {
++      ok = await launchUrl(
++        waUri(c.phone, msg),
++        mode: LaunchMode.externalApplication,
++      );
++    } catch (_) {
++      ok = false;
++    }
++
++    if (!ok && mounted) {
++      await Clipboard.setData(ClipboardData(text: msg));
++      ScaffoldMessenger.of(context).showSnackBar(
++        const SnackBar(
++          content: Text(
++            'WhatsApp tidak bisa dibuka. Pesan disalin, tempel manual ya.',
++          ),
++        ),
++      );
++    }
++  }
++
+   Future<void> _load() async {
+     final db = AppDb.instance;
+     final customers = await db.customers();
+@@ -113,8 +165,10 @@ class _HomeScreenState extends State<HomeScreen> {
+         .where((s) => q.isEmpty || s.customer.name.toLowerCase().contains(q))
+         .toList();
+ 
+-    final totalPiutang =
++    final totalUtangPelanggan =
+         _items.fold<int>(0, (sum, s) => sum + (s.balance > 0 ? s.balance : 0));
++    final totalPiutangWarung =
++        _items.fold<int>(0, (sum, s) => sum + (s.balance < 0 ? -s.balance : 0));
+     final telat =
+         _items.where((s) => s.status() == DebtStatus.telat).length;
+     final mendekati =
+@@ -155,7 +209,8 @@ class _HomeScreenState extends State<HomeScreen> {
+           : Column(
+               children: [
+                 _SummaryCard(
+-                  total: totalPiutang,
++                  total: totalUtangPelanggan,
++                  credit: totalPiutangWarung,
+                   telat: telat,
+                   mendekati: mendekati,
+                 ),
+@@ -190,6 +245,7 @@ class _HomeScreenState extends State<HomeScreen> {
+                           itemBuilder: (_, i) => _CustomerTile(
+                             summary: visible[i],
+                             onTap: () => _openCustomer(visible[i].customer),
++                            onTagih: () => _tagihCepat(visible[i]),
+                           ),
+                         ),
+                 ),
+@@ -201,10 +257,12 @@ class _HomeScreenState extends State<HomeScreen> {
+ 
+ class _SummaryCard extends StatelessWidget {
+   final int total;
++  final int credit;
+   final int telat;
+   final int mendekati;
+   const _SummaryCard({
+     required this.total,
++    required this.credit,
+     required this.telat,
+     required this.mendekati,
+   });
+@@ -218,7 +276,7 @@ class _SummaryCard extends StatelessWidget {
+         child: Column(
+           crossAxisAlignment: CrossAxisAlignment.start,
+           children: [
+-            Text('Total piutang',
++            Text('Total utang pelanggan',
+                 style: Theme.of(context).textTheme.labelLarge),
+             const SizedBox(height: 4),
+             Text(
+@@ -228,6 +286,16 @@ class _SummaryCard extends StatelessWidget {
+                   .headlineMedium
+                   ?.copyWith(fontWeight: FontWeight.bold),
+             ),
++            if (credit > 0) ...[
++              const SizedBox(height: 4),
++              Text(
++                'Piutang warung: ${rupiah(credit)}',
++                style: const TextStyle(
++                  color: kBiru,
++                  fontWeight: FontWeight.w600,
++                ),
++              ),
++            ],
+             const SizedBox(height: 12),
+             Row(
+               children: [
+@@ -278,7 +346,12 @@ class _Badge extends StatelessWidget {
+ class _CustomerTile extends StatelessWidget {
+   final CustomerSummary summary;
+   final VoidCallback onTap;
+-  const _CustomerTile({required this.summary, required this.onTap});
++  final VoidCallback onTagih;
++  const _CustomerTile({
++    required this.summary,
++    required this.onTap,
++    required this.onTagih,
++  });
+ 
+   @override
+   Widget build(BuildContext context) {
+@@ -299,9 +372,23 @@ class _CustomerTile extends StatelessWidget {
+             color: status == DebtStatus.lunas ? null : color,
+             fontWeight: FontWeight.w500),
+       ),
+-      trailing: Text(
+-        rupiah(summary.balance),
+-        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
++      trailing: Row(
++        mainAxisSize: MainAxisSize.min,
++        children: [
++          if (status == DebtStatus.mendekati ||
++              summary.balance > 0)
++            IconButton(
++              tooltip: 'Tagih lewat WhatsApp',
++              icon: const Icon(Icons.chat_outlined),
++              color: color,
++              onPressed: onTagih,
++            ),
++          Text(
++            rupiah(summary.balance.abs()),
++            style: const TextStyle(
++                fontWeight: FontWeight.bold, fontSize: 16),
++          ),
++        ],
+       ),
+     );
+   }
+
+===== DIFF SERVICES BACKUP =====
+diff --git a/lib/services/backup_status.dart b/lib/services/backup_status.dart
+index b415e71..ddac3db 100644
+--- a/lib/services/backup_status.dart
++++ b/lib/services/backup_status.dart
+@@ -3,24 +3,32 @@ import 'dart:async';
+ import 'package:flutter/foundation.dart';
+ import 'package:shared_preferences/shared_preferences.dart';
+ 
+-/// Melacak apakah ada perubahan data yang belum di-backup ke Google Drive.
++/// Melacak apakah ada perubahan data yang belum di-backup, terpisah untuk
++/// backup lokal (file di HP) dan Google Drive.
+ ///
+-/// [dirty]: null = belum diketahui, true = ada perubahan belum di-backup,
+-/// false = data sudah di-backup.
++/// Nilai notifier: null = belum diketahui, true = ada perubahan belum
++/// di-backup, false = sudah di-backup.
+ class BackupStatus {
+   BackupStatus._();
+ 
+   static final BackupStatus instance = BackupStatus._();
+ 
+-  static const String _dirtyKey = 'backup_dirty';
++  // Kunci lama dipertahankan untuk Google Drive agar status lama tidak hilang.
++  static const String _driveKey = 'backup_dirty';
++  static const String _localKey = 'backup_local_dirty';
+ 
+-  final ValueNotifier<bool?> dirty = ValueNotifier<bool?>(null);
++  final ValueNotifier<bool?> driveDirty = ValueNotifier<bool?>(null);
++  final ValueNotifier<bool?> localDirty = ValueNotifier<bool?>(null);
+ 
+   bool _loaded = false;
+   int _revision = 0;
+ 
++  // Semua penulisan status dijalankan berurutan agar status lama
++  // tidak menimpa status terbaru ketika operasi berlangsung bersamaan.
++  Future<void> _writeQueue = Future<void>.value();
++
+   /// Naik setiap data berubah. Dipakai agar perubahan yang terjadi saat
+-  /// upload berlangsung tidak ikut dianggap sudah ter-backup.
++  /// backup berlangsung tidak ikut dianggap sudah ter-backup.
+   int get revision => _revision;
+ 
+   /// Dipanggil sekali saat app dibuka. Panggilan berikutnya diabaikan.
+@@ -29,39 +37,60 @@ class BackupStatus {
+     _loaded = true;
+ 
+     try {
+-      final stored = await SharedPreferencesAsync().getBool(_dirtyKey);
++      final prefs = SharedPreferencesAsync();
++      final drive = await prefs.getBool(_driveKey);
++      final local = await prefs.getBool(_localKey);
+ 
+       // Pertama kali: kalau sudah ada data tapi belum pernah di-backup,
+       // anggap belum ter-backup. Kalau masih kosong, anggap aman.
+-      final value = stored ?? hasData;
++      driveDirty.value ??= drive ?? hasData;
++      localDirty.value ??= local ?? hasData;
+ 
+-      if (dirty.value == null) dirty.value = value;
+-      if (stored == null) await _persist(value);
++      if (drive == null) await _persist(_driveKey, driveDirty.value ?? hasData);
++      if (local == null) await _persist(_localKey, localDirty.value ?? hasData);
+     } catch (e) {
+       debugPrint('Gagal memuat status backup: $e');
+-      dirty.value ??= hasData;
++      driveDirty.value ??= hasData;
++      localDirty.value ??= hasData;
+     }
+   }
+ 
+   void markDirty() {
+     _revision++;
+-    dirty.value = true;
+-    unawaited(_persist(true));
++    driveDirty.value = true;
++    localDirty.value = true;
++    unawaited(_persist(_driveKey, true));
++    unawaited(_persist(_localKey, true));
+   }
+ 
+-  /// Tandai sudah ter-backup, hanya jika data tidak berubah sejak [revision]
+-  /// dicatat (sebelum backup dibuat).
+-  Future<void> markBackedUp(int revision) async {
++  /// Tandai Google Drive sudah ter-backup, hanya jika data tidak berubah
++  /// sejak [revision] dicatat (sebelum backup dibuat).
++  Future<void> markDriveBackedUp(int revision) async {
+     if (revision != _revision) return;
+-    dirty.value = false;
+-    await _persist(false);
++    driveDirty.value = false;
++    await _persist(_driveKey, false);
+   }
+ 
+-  Future<void> _persist(bool value) async {
+-    try {
+-      await SharedPreferencesAsync().setBool(_dirtyKey, value);
+-    } catch (e) {
+-      debugPrint('Gagal menyimpan status backup: $e');
+-    }
++  /// Sama seperti [markDriveBackedUp], untuk backup file lokal.
++  Future<void> markLocalBackedUp(int revision) async {
++    if (revision != _revision) return;
++    localDirty.value = false;
++    await _persist(_localKey, false);
++  }
++
++  /// Nama lama, tetap dipakai oleh alur backup Google Drive.
++  Future<void> markBackedUp(int revision) => markDriveBackedUp(revision);
++
++  Future<void> _persist(String key, bool value) {
++    final operation = _writeQueue.then((_) async {
++      try {
++        await SharedPreferencesAsync().setBool(key, value);
++      } catch (e) {
++        debugPrint('Gagal menyimpan status backup: $e');
++      }
++    });
++
++    _writeQueue = operation;
++    return operation;
+   }
+ }
+diff --git a/lib/services/google_drive_service.dart b/lib/services/google_drive_service.dart
+index d0669fe..e928688 100644
+--- a/lib/services/google_drive_service.dart
++++ b/lib/services/google_drive_service.dart
+@@ -83,8 +83,32 @@ class GoogleDriveService {
+       return _account;
+     }
+ 
+-    _restoreDiagnostic = 'NO_ACTIVE_SESSION';
+-    return null;
++    _restoreDiagnostic = 'ATTEMPTING_LIGHTWEIGHT_AUTH';
++
++    try {
++      final attempt = _google.attemptLightweightAuthentication(
++        reportAllExceptions: true,
++      );
++
++      if (attempt == null) {
++        _restoreDiagnostic = 'LIGHTWEIGHT_NOT_AVAILABLE';
++        return null;
++      }
++
++      final restored = await attempt;
++
++      if (restored == null) {
++        _restoreDiagnostic = 'NO_ACTIVE_SESSION';
++        return _account;
++      }
++
++      _setAccount(restored);
++      _restoreDiagnostic = 'LIGHTWEIGHT_RESTORED';
++      return restored;
++    } catch (e) {
++      _restoreDiagnostic = 'LIGHTWEIGHT_ERROR: ${e.runtimeType}';
++      return null;
++    }
+   }
+ 
+   Future<T> _withDriveApi<T>(
+
+===== DIFF WORKFLOW =====
+diff --git a/.github/workflows/build-apk.yml b/.github/workflows/build-apk.yml
+index 36d0902..e8b744a 100644
+--- a/.github/workflows/build-apk.yml
++++ b/.github/workflows/build-apk.yml
+@@ -48,6 +48,30 @@ jobs:
+           sed -i 's/android:label="[^"]*"/android:label="Buku Utang Warung"/' \
+             android/app/src/main/AndroidManifest.xml
+ 
++          # Kunci Android Keystore tidak boleh dipindahkan oleh Android Auto Backup.
++          python3 - <<'PYSECURE'
++          from pathlib import Path
++
++          manifest = Path("android/app/src/main/AndroidManifest.xml")
++          text = manifest.read_text()
++          start = text.find("<application")
++          if start < 0:
++              raise SystemExit("Tag application tidak ditemukan.")
++
++          end = text.find(">", start)
++          if end < 0:
++              raise SystemExit("Tag application tidak lengkap.")
++
++          tag = text[start:end + 1]
++          if "android:allowBackup=" in tag:
++              raise SystemExit("allowBackup sudah diatur; periksa manual.")
++
++          text = text[:end] + ' android:allowBackup="false"' + text[end:]
++          manifest.write_text(text)
++          print("Android Auto Backup dinonaktifkan.")
++          PYSECURE
++
++
+       # Siapkan keystore dari GitHub Secrets
+       - name: Siapkan keystore
+         env:
+
+===== DIFF UTILITAS DAN STATUS =====
+diff --git a/lib/status_style.dart b/lib/status_style.dart
+index 221a5a9..a903ce5 100644
+--- a/lib/status_style.dart
++++ b/lib/status_style.dart
+@@ -6,9 +6,12 @@ const kHijau = Color(0xFF2E7D32);
+ const kKuning = Color(0xFFF9A825);
+ const kMerah = Color(0xFFC62828);
+ const kAbu = Color(0xFF757575);
++const kBiru = Color(0xFF1565C0);
+ 
+ Color statusColor(DebtStatus s) {
+   switch (s) {
++    case DebtStatus.piutang:
++      return kBiru;
+     case DebtStatus.lunas:
+       return kAbu;
+     case DebtStatus.lancar:
+diff --git a/lib/utils.dart b/lib/utils.dart
+index d7e9613..054621f 100644
+--- a/lib/utils.dart
++++ b/lib/utils.dart
+@@ -31,6 +31,8 @@ String tgl(DateTime d) => '${d.day} ${_bulan[d.month - 1]} ${d.year}';
+ String statusText(CustomerSummary s, [DateTime? now]) {
+   final today = dateOnly(now ?? DateTime.now());
+   switch (s.status(now)) {
++    case DebtStatus.piutang:
++      return 'Piutang pelanggan';
+     case DebtStatus.lunas:
+       return 'Lunas';
+     case DebtStatus.telat:
+@@ -78,20 +80,41 @@ String buildReminder({
+   required int balance,
+   DateTime? due,
+   required List<Txn> txns,
++  String shopName = '',
++  String header = '',
++  String footer = '',
+ }) {
+-  final b = StringBuffer()
++  final b = StringBuffer();
++
++  if (header.trim().isNotEmpty) {
++    b.writeln(header.trim());
++    b.writeln('');
++  }
++  if (shopName.trim().isNotEmpty) {
++    b.writeln('*${shopName.trim()}*');
++  }
++
++  b
+     ..writeln('Halo $name, mohon maaf mengganggu 🙏')
+     ..writeln(
+-        'Ini pengingat ramah dari warung: sisa utang Anda saat ini ${rupiah(balance)}.');
++      'Ini pengingat ramah dari warung: sisa utang Anda saat ini '
++      '*${rupiah(balance.abs())}*.',
++    );
++
+   if (due != null) b.writeln('Jatuh tempo: ${tgl(due)}.');
++
+   final recent = _newestFirst(txns);
+   if (recent.isNotEmpty) {
+-    b.writeln('\nRincian terakhir:');
++    b.writeln('\nRincian siklus tagihan aktif:');
+     for (final t in recent) {
+       b.writeln('- ${_line(t)}');
+     }
+   }
+-  b.write('\nKalau sudah ada rezekinya, ditunggu ya. Terima kasih banyak!');
++
++  final closing = footer.trim();
++  b.write(
++    '\n${closing.isNotEmpty ? closing : 'Kalau sudah ada rezekinya, ditunggu ya. Terima kasih banyak!'}',
++  );
+   return b.toString();
+ }
+ 
+@@ -99,6 +122,9 @@ String buildReminder({
+ String buildSettlementReceipt({
+   required String name,
+   required List<Txn> txns,
++  String shopName = '',
++  String header = '',
++  String footer = '',
+ }) {
+   final sorted = [...txns]..sort((a, b) {
+     final byDate = a.date.compareTo(b.date);
+@@ -112,13 +138,23 @@ String buildSettlementReceipt({
+       .where((t) => t.type == TxnType.bayar)
+       .fold<int>(0, (sum, t) => sum + t.amount);
+ 
+-  final b = StringBuffer()
++  final b = StringBuffer();
++
++  if (header.trim().isNotEmpty) {
++    b.writeln(header.trim());
++    b.writeln('');
++  }
++  if (shopName.trim().isNotEmpty) {
++    b.writeln('*${shopName.trim()}*');
++  }
++
++  b
+     ..writeln('BUKTI PELUNASAN')
+     ..writeln('Nama: $name')
+     ..writeln('Waktu: ${tglJam(DateTime.now())}')
+     ..writeln('Status: LUNAS')
+-    ..writeln('Total utang: ${rupiah(totalDebt)}')
+-    ..writeln('Total pembayaran: ${rupiah(totalPaid)}')
++    ..writeln('Total utang: *${rupiah(totalDebt)}*')
++    ..writeln('Total pembayaran: *${rupiah(totalPaid)}*')
+     ..writeln('')
+     ..writeln('Rincian transaksi:');
+ 
+@@ -127,7 +163,11 @@ String buildSettlementReceipt({
+   }
+ 
+   b.writeln('');
+-  b.write('Terima kasih sudah menyelesaikan pembayaran 🙏');
++  b.write(
++    footer.trim().isNotEmpty
++        ? footer.trim()
++        : 'Terima kasih sudah menyelesaikan pembayaran 🙏',
++  );
+   return b.toString();
+ }
+ 
+
+===== DIFF CHECK =====
