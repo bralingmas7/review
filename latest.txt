@@ -1,53 +1,38 @@
-===== FILE YANG AKAN DI-COMMIT =====
-M	.github/workflows/build-apk.yml
-M	lib/models.dart
-M	lib/screens/customer_screen.dart
-M	lib/screens/home_screen.dart
-A	lib/screens/receipt_image_screen.dart
-M	lib/screens/settings_screen.dart
-M	lib/services/backup_status.dart
-M	lib/services/google_drive_service.dart
-A	lib/services/shop_message_settings.dart
-M	lib/status_style.dart
-M	lib/utils.dart
-M	lib/widgets/backup_indicator.dart
-M	pubspec.yaml
-M	test/utils_test.dart
+===== DEPENDENCY =====
+23-  connectivity_plus: ^7.3.2
+24-  gal: ^2.3.3
+25:  share_plus: ^13.3.1
+26-
+27-dev_dependencies:
 
-===== RINGKASAN PERUBAHAN =====
- .github/workflows/build-apk.yml         |  24 +++
- lib/models.dart                         |  57 +++--
- lib/screens/customer_screen.dart        |  92 +++++++-
- lib/screens/home_screen.dart            | 101 ++++++++-
- lib/screens/receipt_image_screen.dart   | 369 ++++++++++++++++++++++++++++++++
- lib/screens/settings_screen.dart        | 107 +++++++++
- lib/services/backup_status.dart         |  77 ++++---
- lib/services/google_drive_service.dart  |  28 ++-
- lib/services/shop_message_settings.dart |  33 +++
- lib/status_style.dart                   |   3 +
- lib/utils.dart                          |  56 ++++-
- lib/widgets/backup_indicator.dart       | 104 ++++++---
- pubspec.yaml                            |   4 +
- test/utils_test.dart                    |  58 +++++
- 14 files changed, 1009 insertions(+), 104 deletions(-)
+===== API SHARE PNG =====
+114-
+115-    setState(() => _working = true);
+116-    try {
+117:      await SharePlus.instance.share(
+118-        ShareParams(
+119-          files: [
+120-            XFile.fromData(
+121-              bytes,
+122-              mimeType: 'image/png',
+123-              name: _fileName,
+124-            ),
+125-          ],
+126-          fileNameOverrides: [_fileName],
+127-        ),
+128-      );
+129-    } catch (e) {
+130-      if (mounted) {
+131-        ScaffoldMessenger.of(context).showSnackBar(
 
-===== PEMERIKSAAN PATCH =====
+===== API LAMA =====
+OK: API lama tidak ditemukan
+
+===== DIFF CHECK =====
 
 ===== STATUS GIT =====
-M  .github/workflows/build-apk.yml
-M  lib/models.dart
-M  lib/screens/customer_screen.dart
-M  lib/screens/home_screen.dart
-A  lib/screens/receipt_image_screen.dart
-M  lib/screens/settings_screen.dart
-M  lib/services/backup_status.dart
-M  lib/services/google_drive_service.dart
-A  lib/services/shop_message_settings.dart
-M  lib/status_style.dart
-M  lib/utils.dart
-M  lib/widgets/backup_indicator.dart
-M  pubspec.yaml
-M  test/utils_test.dart
+ M lib/screens/receipt_image_screen.dart
+ M pubspec.yaml
 ?? add_backup_indicator.sh
 ?? backup_app_lock_integrity_20261116_210514/
 ?? backup_app_lock_recovery_20261116_210009/
@@ -61,6 +46,7 @@ M  test/utils_test.dart
 ?? backup_cloud_reconnect_20261115_133235/
 ?? backup_diagnostik_google_20261115_111942/
 ?? backup_fix_google_import_20261115_104148/
+?? backup_fix_share_dependency_20261117_115727/
 ?? backup_google_lightweight_restore_20261116_233447/
 ?? backup_google_login_20261114_185251/
 ?? backup_google_restore_20261115_132224/
@@ -98,3 +84,6 @@ M  test/utils_test.dart
 ?? patchv3.py
 ?? tambah_fitur.sh
 ?? test/utils_test.dart.backup_20261117_070428
+
+===== BACKUP =====
+backup_fix_share_dependency_20261117_115727
