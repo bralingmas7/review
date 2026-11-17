@@ -1,16 +1,25 @@
-===== CONNECTIVITY PLUS =====
-23:  connectivity_plus: ^7.3.1
-
-===== FILE PICKER =====
-15:  file_picker: ^12.3.0
-
-===== SHARE PLUS =====
-25:  share_plus: ^13.3.1
+===== FILE STAGED =====
+M	pubspec.yaml
 
 ===== DIFF CHECK =====
 
-===== STATUS GIT =====
- M pubspec.yaml
+===== DIFF PUBSPEC =====
+diff --git a/pubspec.yaml b/pubspec.yaml
+index b47cbfc..848fc83 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -20,7 +20,7 @@ dependencies:
+   cryptography: ^2.7.0
+   shared_preferences: 2.3.1
+   flutter_secure_storage: ^11.2.0
+-  connectivity_plus: ^7.3.2
++  connectivity_plus: ^7.3.1
+   gal: ^2.3.3
+   share_plus: ^13.3.1
+ 
+
+===== STATUS =====
+M  pubspec.yaml
 ?? add_backup_indicator.sh
 ?? backup_app_lock_integrity_20261116_210514/
 ?? backup_app_lock_recovery_20261116_210009/
@@ -63,6 +72,3 @@
 ?? patchv3.py
 ?? tambah_fitur.sh
 ?? test/utils_test.dart.backup_20261117_070428
-
-===== BACKUP =====
-backup_fix_connectivity_dbus_20261117_120224

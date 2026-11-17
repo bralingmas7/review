@@ -1,0 +1,74 @@
+===== FILE STAGED =====
+M	pubspec.yaml
+
+===== DIFF CHECK =====
+
+===== DIFF PUBSPEC =====
+diff --git a/pubspec.yaml b/pubspec.yaml
+index b47cbfc..848fc83 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -20,7 +20,7 @@ dependencies:
+   cryptography: ^2.7.0
+   shared_preferences: 2.3.1
+   flutter_secure_storage: ^11.2.0
+-  connectivity_plus: ^7.3.2
++  connectivity_plus: ^7.3.1
+   gal: ^2.3.3
+   share_plus: ^13.3.1
+ 
+
+===== STATUS =====
+M  pubspec.yaml
+?? add_backup_indicator.sh
+?? backup_app_lock_integrity_20261116_210514/
+?? backup_app_lock_recovery_20261116_210009/
+?? backup_app_lock_safe_20261116_205501/
+?? backup_app_lock_safe_20261116_205635/
+?? backup_app_lock_safe_20261116_205712/
+?? backup_app_lock_storage_20261116_211528/
+?? backup_auto_backup_dependencies_20261116_234527/
+?? backup_backup_status_race_20261116_231910/
+?? backup_before_revert_lightweight_20261115_133121/
+?? backup_cloud_reconnect_20261115_133235/
+?? backup_diagnostik_google_20261115_111942/
+?? backup_fix_connectivity_dbus_20261117_120224/
+?? backup_fix_google_import_20261115_104148/
+?? backup_fix_share_dependency_20261117_115727/
+?? backup_google_lightweight_restore_20261116_233447/
+?? backup_google_login_20261114_185251/
+?? backup_google_restore_20261115_132224/
+?? backup_google_session_20261115_102650/
+?? backup_google_session_fix_20261115_123805/
+?? backup_google_session_fix_20261115_124655/
+?? backup_guard_whatsapp_20261116_230413/
+?? backup_guard_whatsapp_20261116_230532/
+?? backup_guard_whatsapp_v2_20261116_230720/
+?? backup_listener_google_20261115_125040/
+?? backup_pengaturan_warung_20261116_222928/
+?? backup_png_filename_20261117_061635/
+?? backup_remove_app_lock_20261116_213512/
+?? backup_remove_app_lock_20261116_213908/
+?? backup_saldo_piutang_20261116_221958/
+?? backup_sebelum_cloud_ui_20261114_225058/
+?? backup_sebelum_cloud_ui_20261114_225846/
+?? backup_sebelum_fix_sqlite_20261114_231957/
+?? backup_sebelum_google_20261114_184301/
+?? backup_sebelum_integrasi_drive_20261114_221515/
+?? backup_sebelum_pin_ffi_20261114_230953/
+?? backup_sebelum_pin_shared_preferences_20261115_124930/
+?? backup_sebelum_settings_20261114_164203/
+?? backup_sebelum_test_restore_20261114_230544/
+?? backup_sebelum_update_siklus/
+?? backup_sebelum_whatsapp_gambar_20261116_221203/
+?? backup_settings_warung_ui_20261116_223241/
+?? backup_status_google_20261114_192221/
+?? backup_switch_png_20261117_062447/
+?? backup_whatsapp_newline_20261116_225847/
+?? fix_diag.sh
+?? fix_google_session.sh
+?? fix_ux.sh
+?? patch_google_session.py
+?? patchv3.py
+?? tambah_fitur.sh
+?? test/utils_test.dart.backup_20261117_070428
