@@ -1,142 +1,428 @@
-===== HASIL PENAMBAHAN TES SALDO KREDIT =====
-Tue Nov 17 07:04:29 WIB 2026
+===== DEFINISI HELPER TEST =====
+test/utils_test.dart-1-import 'package:flutter_test/flutter_test.dart';
+test/utils_test.dart-2-
+test/utils_test.dart-3-import 'package:buku_utang_warung/models.dart';
+test/utils_test.dart-4-import 'package:buku_utang_warung/utils.dart';
+test/utils_test.dart-5-
+test/utils_test.dart:6:Txn utang(int amount, DateTime date, {DateTime? due}) => Txn(
+test/utils_test.dart-7-      customerId: 1,
+test/utils_test.dart-8-      type: TxnType.utang,
+test/utils_test.dart-9-      amount: amount,
+test/utils_test.dart-10-      date: date,
+test/utils_test.dart-11-      dueDate: due,
+test/utils_test.dart-12-    );
+test/utils_test.dart-13-
+test/utils_test.dart:14:Txn bayar(int amount, DateTime date) =>
+test/utils_test.dart-15-    Txn(customerId: 1, type: TxnType.bayar, amount: amount, date: date);
+test/utils_test.dart-16-
+test/utils_test.dart-17-void main() {
+test/utils_test.dart-18-  test('rupiah memakai pemisah titik', () {
+test/utils_test.dart-19-    expect(rupiah(0), 'Rp 0');
+test/utils_test.dart-20-    expect(rupiah(500), 'Rp 500');
+test/utils_test.dart-21-    expect(rupiah(15000), 'Rp 15.000');
+test/utils_test.dart-22-    expect(rupiah(1250000), 'Rp 1.250.000');
+test/utils_test.dart-23-    expect(rupiah(-2000), '-Rp 2.000');
+test/utils_test.dart-24-  });
+test/utils_test.dart-25-
+test/utils_test.dart-26-  test('tgl memakai nama bulan Indonesia', () {
+test/utils_test.dart-27-    expect(tgl(DateTime(2026, 11, 5)), '5 Nov 2026');
+test/utils_test.dart-28-    expect(tgl(DateTime(2026, 8, 17)), '17 Agu 2026');
+test/utils_test.dart-29-  });
+test/utils_test.dart-30-
+test/utils_test.dart-31-  test('normalizePhone ke format internasional', () {
+test/utils_test.dart-32-    expect(normalizePhone('0812-3456-789'), '628123456789');
+test/utils_test.dart-33-    expect(normalizePhone('+62 812 3456 789'), '628123456789');
+test/utils_test.dart-34-    expect(normalizePhone('8123456789'), '628123456789');
+test/utils_test.dart-35-    expect(normalizePhone(''), isNull);
+test/utils_test.dart-36-  });
+test/utils_test.dart-37-
+test/utils_test.dart-38-  test('saldo = utang dikurangi bayar', () {
+test/utils_test.dart-39-    final txns = [
+test/utils_test.dart:40:      utang(10000, DateTime(2026, 1, 1)),
+test/utils_test.dart:41:      utang(20000, DateTime(2026, 1, 5)),
+test/utils_test.dart:42:      bayar(5000, DateTime(2026, 1, 6)),
+test/utils_test.dart-43-    ];
+test/utils_test.dart-44-    expect(computeBalance(txns), 25000);
+test/utils_test.dart-45-  });
+test/utils_test.dart-46-
+test/utils_test.dart-47-  test('jatuh tempo dihitung dengan alokasi bayar ke utang terlama', () {
+test/utils_test.dart-48-    final txns = [
+test/utils_test.dart:49:      utang(10000, DateTime(2026, 1, 1), due: DateTime(2026, 1, 10)),
+test/utils_test.dart:50:      utang(20000, DateTime(2026, 1, 5), due: DateTime(2026, 1, 20)),
+test/utils_test.dart:51:      bayar(10000, DateTime(2026, 1, 6)),
+test/utils_test.dart-52-    ];
+test/utils_test.dart-53-    // Utang pertama sudah lunas, tinggal yang tempo 20 Jan.
+test/utils_test.dart-54-    expect(nextDueDate(txns), DateTime(2026, 1, 20));
+test/utils_test.dart-55-  });
+test/utils_test.dart-56-
+test/utils_test.dart-57-  test('tanpa tempo atau sudah lunas -> tidak ada jatuh tempo', () {
+test/utils_test.dart:58:    expect(nextDueDate([utang(1000, DateTime(2026, 1, 1))]), isNull);
+test/utils_test.dart-59-    expect(
+test/utils_test.dart-60-      nextDueDate([
+test/utils_test.dart:61:        utang(1000, DateTime(2026, 1, 1), due: DateTime(2026, 1, 10)),
+test/utils_test.dart:62:        bayar(1000, DateTime(2026, 1, 2)),
+test/utils_test.dart-63-      ]),
+test/utils_test.dart-64-      isNull,
+test/utils_test.dart-65-    );
+test/utils_test.dart-66-  });
+test/utils_test.dart-67-
+test/utils_test.dart-68-  test('status pelanggan', () {
+test/utils_test.dart-69-    final c = Customer(id: 1, name: 'Bu Ani', createdAt: DateTime(2026, 1, 1));
+test/utils_test.dart-70-    final now = DateTime(2026, 11, 13, 9);
+test/utils_test.dart-71-
+test/utils_test.dart-72-    CustomerSummary s(int balance, DateTime? due) =>
+test/utils_test.dart:73:        CustomerSummary(customer: c, balance: balance, nextDue: due);
+test/utils_test.dart-74-
+test/utils_test.dart-75-    expect(s(0, null).status(now), DebtStatus.lunas);
+test/utils_test.dart-76-    expect(s(5000, null).status(now), DebtStatus.lancar);
+test/utils_test.dart-77-    expect(s(5000, DateTime(2026, 11, 12)).status(now), DebtStatus.telat);
+test/utils_test.dart-78-    expect(s(5000, DateTime(2026, 11, 13)).status(now), DebtStatus.mendekati);
+test/utils_test.dart-79-    expect(s(5000, DateTime(2026, 11, 16)).status(now), DebtStatus.mendekati);
+test/utils_test.dart-80-    expect(s(5000, DateTime(2026, 11, 20)).status(now), DebtStatus.lancar);
+test/utils_test.dart-81-    expect(statusText(s(5000, DateTime(2026, 11, 10)), now), 'Telat 3 hari');
+test/utils_test.dart-82-  });
+test/utils_test.dart-83-
+test/utils_test.dart-84-  test('pesan tagih memuat nama dan nominal', () {
+test/utils_test.dart-85-    final msg = buildReminder(
+test/utils_test.dart-86-      name: 'Pak Budi',
+test/utils_test.dart-87-      balance: 45000,
+test/utils_test.dart-88-      due: DateTime(2026, 11, 20),
+test/utils_test.dart:89:      txns: [utang(45000, DateTime(2026, 11, 1))],
+test/utils_test.dart-90-    );
+test/utils_test.dart-91-    expect(msg, contains('Pak Budi'));
+test/utils_test.dart-92-    expect(msg, contains('Rp 45.000'));
+test/utils_test.dart-93-    expect(msg, contains('20 Nov 2026'));
+test/utils_test.dart-94-  });
+test/utils_test.dart-95-
+test/utils_test.dart-96-
+test/utils_test.dart-97-  test('pembayaran berlebih menghasilkan saldo piutang', () {
+test/utils_test.dart-98-    final txns = [
+test/utils_test.dart:99:      utang(100000, DateTime(2026, 1, 1)),
+test/utils_test.dart:100:      bayar(150000, DateTime(2026, 1, 2)),
+test/utils_test.dart-101-    ];
+test/utils_test.dart-102-
+test/utils_test.dart-103-    expect(computeBalance(txns), -50000);
+test/utils_test.dart-104-
+test/utils_test.dart-105-    final customer = Customer(
+test/utils_test.dart-106-      id: 1,
+test/utils_test.dart-107-      name: 'Bu Ani',
+test/utils_test.dart-108-      createdAt: DateTime(2026, 1, 1),
+test/utils_test.dart-109-    );
+test/utils_test.dart-110-
+test/utils_test.dart:111:    final summary = CustomerSummary(
+test/utils_test.dart-112-      customer: customer,
+test/utils_test.dart-113-      balance: computeBalance(txns),
+test/utils_test.dart-114-    );
+test/utils_test.dart-115-
+test/utils_test.dart-116-    expect(summary.status(), DebtStatus.piutang);
+test/utils_test.dart-117-  });
+test/utils_test.dart-118-
+test/utils_test.dart-119-  test('kredit lama mengurangi utang baru', () {
+test/utils_test.dart-120-    final txns = [
+test/utils_test.dart:121:      utang(100000, DateTime(2026, 1, 1)),
+test/utils_test.dart:122:      bayar(150000, DateTime(2026, 1, 2)),
+test/utils_test.dart:123:      utang(70000, DateTime(2026, 1, 3),
+test/utils_test.dart-124-          due: DateTime(2026, 1, 20)),
+test/utils_test.dart-125-    ];
+test/utils_test.dart-126-
+test/utils_test.dart-127-    expect(computeBalance(txns), 20000);
+test/utils_test.dart-128-    expect(nextDueDate(txns), DateTime(2026, 1, 20));
+test/utils_test.dart-129-  });
+test/utils_test.dart-130-
+test/utils_test.dart-131-  test('saldo negatif tidak dianggap siklus lunas', () {
+test/utils_test.dart-132-    final txns = [
+test/utils_test.dart:133:      utang(100000, DateTime(2026, 1, 1)),
+test/utils_test.dart:134:      bayar(150000, DateTime(2026, 1, 2)),
+test/utils_test.dart-135-    ];
+test/utils_test.dart-136-
+test/utils_test.dart-137-    expect(activeDebtCycle(txns), hasLength(2));
+test/utils_test.dart-138-    expect(latestClosedDebtCycle(txns), isEmpty);
+test/utils_test.dart-139-  });
+test/utils_test.dart-140-
+test/utils_test.dart-141-  test('siklus ditutup ketika saldo kembali tepat nol', () {
+test/utils_test.dart-142-    final txns = [
+test/utils_test.dart:143:      utang(100000, DateTime(2026, 1, 1)),
+test/utils_test.dart:144:      bayar(150000, DateTime(2026, 1, 2)),
+test/utils_test.dart:145:      utang(70000, DateTime(2026, 1, 3)),
+test/utils_test.dart:146:      bayar(20000, DateTime(2026, 1, 4)),
+test/utils_test.dart-147-    ];
+test/utils_test.dart-148-
+test/utils_test.dart-149-    expect(computeBalance(txns), 0);
+test/utils_test.dart-150-    expect(activeDebtCycle(txns), isEmpty);
+test/utils_test.dart-151-    expect(latestClosedDebtCycle(txns), hasLength(4));
+test/utils_test.dart-152-  });
+test/utils_test.dart-153-
+test/utils_test.dart-154-  test('waUri menyandikan teks', () {
+test/utils_test.dart-155-    final uri = waUri('08123456789', 'Halo dunia');
+test/utils_test.dart-156-    expect(uri.host, 'wa.me');
+test/utils_test.dart-157-    expect(uri.path, '/628123456789');
+test/utils_test.dart-158-    expect(uri.queryParameters['text'], 'Halo dunia');
+test/utils_test.dart-159-  });
+test/utils_test.dart-160-}
+--
+lib/models.dart-1-enum TxnType { utang, bayar }
+lib/models.dart-2-
+lib/models.dart:3:enum DebtStatus { piutang, lunas, lancar, mendekati, telat }
+lib/models.dart-4-
+lib/models.dart-5-DateTime dateOnly(DateTime d) => DateTime(d.year, d.month, d.day);
+lib/models.dart-6-
+lib/models.dart-7-class Customer {
+lib/models.dart-8-  final int? id;
+lib/models.dart-9-  final String name;
+lib/models.dart-10-  final String phone;
+lib/models.dart-11-  final String note;
+lib/models.dart-12-
+lib/models.dart-13-  /// Batas utang dalam rupiah. 0 berarti tanpa batas.
+lib/models.dart-14-  final int creditLimit;
+lib/models.dart-15-  final DateTime createdAt;
+lib/models.dart-16-
+lib/models.dart-17-  const Customer({
+lib/models.dart-18-    this.id,
+lib/models.dart-19-    required this.name,
+lib/models.dart-20-    this.phone = '',
+lib/models.dart-21-    this.note = '',
+lib/models.dart-22-    this.creditLimit = 0,
+lib/models.dart-23-    required this.createdAt,
+lib/models.dart-24-  });
+lib/models.dart-25-
+lib/models.dart-26-  Customer copyWith({
+lib/models.dart-27-    int? id,
+lib/models.dart-28-    String? name,
+--
+lib/models.dart-148-    final due = item.key.dueDate;
+lib/models.dart-149-    if (due != null && (earliest == null || due.isBefore(earliest))) {
+lib/models.dart-150-      earliest = due;
+lib/models.dart-151-    }
+lib/models.dart-152-  }
+lib/models.dart-153-  return earliest;
+lib/models.dart-154-}
+lib/models.dart-155-
+lib/models.dart:156:class CustomerSummary {
+lib/models.dart-157-  final Customer customer;
+lib/models.dart-158-  final int balance;
+lib/models.dart-159-  final DateTime? nextDue;
+lib/models.dart-160-  final DateTime? lastActivity;
+lib/models.dart-161-
+lib/models.dart:162:  const CustomerSummary({
+lib/models.dart-163-    required this.customer,
+lib/models.dart-164-    required this.balance,
+lib/models.dart-165-    this.nextDue,
+lib/models.dart-166-    this.lastActivity,
+lib/models.dart-167-  });
+lib/models.dart-168-
+lib/models.dart-169-  DebtStatus status([DateTime? now]) {
+lib/models.dart-170-    if (balance < 0) return DebtStatus.piutang;
+lib/models.dart-171-    if (balance == 0) return DebtStatus.lunas;
+lib/models.dart-172-    final due = nextDue;
+lib/models.dart-173-    if (due == null) return DebtStatus.lancar;
+lib/models.dart-174-    final today = dateOnly(now ?? DateTime.now());
+lib/models.dart-175-    final dueDay = dateOnly(due);
+lib/models.dart-176-    if (dueDay.isBefore(today)) return DebtStatus.telat;
+lib/models.dart-177-    if (dueDay.difference(today).inDays <= 3) return DebtStatus.mendekati;
+lib/models.dart-178-    return DebtStatus.lancar;
+lib/models.dart-179-  }
+lib/models.dart-180-
+lib/models.dart-181-  bool get overLimit =>
+lib/models.dart-182-      customer.creditLimit > 0 && balance > customer.creditLimit;
+lib/models.dart-183-}
+lib/models.dart-184-
+lib/models.dart-185-List<CustomerSummary> buildSummaries(
+lib/models.dart-186-  List<Customer> customers,
+lib/models.dart-187-  List<Txn> txns,
+lib/models.dart-188-) {
+lib/models.dart-189-  final byCustomer = <int, List<Txn>>{};
+lib/models.dart-190-  for (final t in txns) {
+lib/models.dart-191-    byCustomer.putIfAbsent(t.customerId, () => <Txn>[]).add(t);
+lib/models.dart-192-  }
+lib/models.dart-193-  return customers.map((c) {
+lib/models.dart-194-    final list = byCustomer[c.id] ?? <Txn>[];
+lib/models.dart:195:    return CustomerSummary(
+lib/models.dart-196-      customer: c,
+lib/models.dart-197-      balance: computeBalance(list),
+lib/models.dart-198-      nextDue: nextDueDate(list),
+lib/models.dart-199-      lastActivity: list.isEmpty
+lib/models.dart-200-          ? null
+lib/models.dart-201-          : list.map((t) => t.date).reduce((a, b) => a.isAfter(b) ? a : b),
+lib/models.dart-202-    );
+lib/models.dart-203-  }).toList();
+lib/models.dart-204-}
+lib/models.dart-205-
+lib/models.dart-206-
+lib/models.dart-207-/// Mengurutkan transaksi berdasarkan waktu, lalu ID untuk waktu yang sama.
+lib/models.dart-208-List<Txn> _orderedTxns(List<Txn> txns) {
+lib/models.dart-209-  return [...txns]..sort((a, b) {
+lib/models.dart-210-    final byDate = a.date.compareTo(b.date);
+lib/models.dart-211-    return byDate != 0 ? byDate : (a.id ?? 0).compareTo(b.id ?? 0);
+lib/models.dart-212-  });
+lib/models.dart-213-}
+lib/models.dart-214-
+lib/models.dart-215-/// Transaksi pada siklus utang yang masih aktif.
+lib/models.dart-216-List<Txn> activeDebtCycle(List<Txn> txns) {
+lib/models.dart-217-  final cycle = <Txn>[];
+lib/models.dart-218-  var balance = 0;
+lib/models.dart-219-
+lib/models.dart-220-  for (final t in _orderedTxns(txns)) {
 
-===== TES BARU =====
-95-
-96-
-97:  test('pembayaran berlebih menghasilkan saldo piutang', () {
-98-    final txns = [
-99-      utang(100000, DateTime(2026, 1, 1)),
-100-      bayar(150000, DateTime(2026, 1, 2)),
-101-    ];
-102-
-103-    expect(computeBalance(txns), -50000);
-104-
-105-    final customer = Customer(
-106-      id: 1,
-107-      name: 'Bu Ani',
-108-      createdAt: DateTime(2026, 1, 1),
-109-    );
-110-
-111-    final summary = CustomerSummary(
-112-      customer: customer,
-113-      balance: computeBalance(txns),
-114-    );
-115-
-116-    expect(summary.status(), DebtStatus.piutang);
-117-  });
-118-
-119:  test('kredit lama mengurangi utang baru', () {
-120-    final txns = [
-121-      utang(100000, DateTime(2026, 1, 1)),
-122-      bayar(150000, DateTime(2026, 1, 2)),
-123-      utang(70000, DateTime(2026, 1, 3),
-124-          due: DateTime(2026, 1, 20)),
-125-    ];
-126-
-127-    expect(computeBalance(txns), 20000);
-128-    expect(nextDueDate(txns), DateTime(2026, 1, 20));
-129-  });
-130-
-131:  test('saldo negatif tidak dianggap siklus lunas', () {
-132-    final txns = [
-133-      utang(100000, DateTime(2026, 1, 1)),
-134-      bayar(150000, DateTime(2026, 1, 2)),
-135-    ];
-136-
-137-    expect(activeDebtCycle(txns), hasLength(2));
-138-    expect(latestClosedDebtCycle(txns), isEmpty);
-139-  });
-140-
-141:  test('siklus ditutup ketika saldo kembali tepat nol', () {
-142-    final txns = [
-143-      utang(100000, DateTime(2026, 1, 1)),
-144-      bayar(150000, DateTime(2026, 1, 2)),
-145-      utang(70000, DateTime(2026, 1, 3)),
-146-      bayar(20000, DateTime(2026, 1, 4)),
-147-    ];
-148-
-149-    expect(computeBalance(txns), 0);
-150-    expect(activeDebtCycle(txns), isEmpty);
-151-    expect(latestClosedDebtCycle(txns), hasLength(4));
-152-  });
-153-
-154-  test('waUri menyandikan teks', () {
-155-    final uri = waUri('08123456789', 'Halo dunia');
-156-    expect(uri.host, 'wa.me');
-157-    expect(uri.path, '/628123456789');
-158-    expect(uri.queryParameters['text'], 'Halo dunia');
-159-  });
-160-}
+===== TEST LENGKAP =====
+     1	import 'package:flutter_test/flutter_test.dart';
+     2	
+     3	import 'package:buku_utang_warung/models.dart';
+     4	import 'package:buku_utang_warung/utils.dart';
+     5	
+     6	Txn utang(int amount, DateTime date, {DateTime? due}) => Txn(
+     7	      customerId: 1,
+     8	      type: TxnType.utang,
+     9	      amount: amount,
+    10	      date: date,
+    11	      dueDate: due,
+    12	    );
+    13	
+    14	Txn bayar(int amount, DateTime date) =>
+    15	    Txn(customerId: 1, type: TxnType.bayar, amount: amount, date: date);
+    16	
+    17	void main() {
+    18	  test('rupiah memakai pemisah titik', () {
+    19	    expect(rupiah(0), 'Rp 0');
+    20	    expect(rupiah(500), 'Rp 500');
+    21	    expect(rupiah(15000), 'Rp 15.000');
+    22	    expect(rupiah(1250000), 'Rp 1.250.000');
+    23	    expect(rupiah(-2000), '-Rp 2.000');
+    24	  });
+    25	
+    26	  test('tgl memakai nama bulan Indonesia', () {
+    27	    expect(tgl(DateTime(2026, 11, 5)), '5 Nov 2026');
+    28	    expect(tgl(DateTime(2026, 8, 17)), '17 Agu 2026');
+    29	  });
+    30	
+    31	  test('normalizePhone ke format internasional', () {
+    32	    expect(normalizePhone('0812-3456-789'), '628123456789');
+    33	    expect(normalizePhone('+62 812 3456 789'), '628123456789');
+    34	    expect(normalizePhone('8123456789'), '628123456789');
+    35	    expect(normalizePhone(''), isNull);
+    36	  });
+    37	
+    38	  test('saldo = utang dikurangi bayar', () {
+    39	    final txns = [
+    40	      utang(10000, DateTime(2026, 1, 1)),
+    41	      utang(20000, DateTime(2026, 1, 5)),
+    42	      bayar(5000, DateTime(2026, 1, 6)),
+    43	    ];
+    44	    expect(computeBalance(txns), 25000);
+    45	  });
+    46	
+    47	  test('jatuh tempo dihitung dengan alokasi bayar ke utang terlama', () {
+    48	    final txns = [
+    49	      utang(10000, DateTime(2026, 1, 1), due: DateTime(2026, 1, 10)),
+    50	      utang(20000, DateTime(2026, 1, 5), due: DateTime(2026, 1, 20)),
+    51	      bayar(10000, DateTime(2026, 1, 6)),
+    52	    ];
+    53	    // Utang pertama sudah lunas, tinggal yang tempo 20 Jan.
+    54	    expect(nextDueDate(txns), DateTime(2026, 1, 20));
+    55	  });
+    56	
+    57	  test('tanpa tempo atau sudah lunas -> tidak ada jatuh tempo', () {
+    58	    expect(nextDueDate([utang(1000, DateTime(2026, 1, 1))]), isNull);
+    59	    expect(
+    60	      nextDueDate([
+    61	        utang(1000, DateTime(2026, 1, 1), due: DateTime(2026, 1, 10)),
+    62	        bayar(1000, DateTime(2026, 1, 2)),
+    63	      ]),
+    64	      isNull,
+    65	    );
+    66	  });
+    67	
+    68	  test('status pelanggan', () {
+    69	    final c = Customer(id: 1, name: 'Bu Ani', createdAt: DateTime(2026, 1, 1));
+    70	    final now = DateTime(2026, 11, 13, 9);
+    71	
+    72	    CustomerSummary s(int balance, DateTime? due) =>
+    73	        CustomerSummary(customer: c, balance: balance, nextDue: due);
+    74	
+    75	    expect(s(0, null).status(now), DebtStatus.lunas);
+    76	    expect(s(5000, null).status(now), DebtStatus.lancar);
+    77	    expect(s(5000, DateTime(2026, 11, 12)).status(now), DebtStatus.telat);
+    78	    expect(s(5000, DateTime(2026, 11, 13)).status(now), DebtStatus.mendekati);
+    79	    expect(s(5000, DateTime(2026, 11, 16)).status(now), DebtStatus.mendekati);
+    80	    expect(s(5000, DateTime(2026, 11, 20)).status(now), DebtStatus.lancar);
+    81	    expect(statusText(s(5000, DateTime(2026, 11, 10)), now), 'Telat 3 hari');
+    82	  });
+    83	
+    84	  test('pesan tagih memuat nama dan nominal', () {
+    85	    final msg = buildReminder(
+    86	      name: 'Pak Budi',
+    87	      balance: 45000,
+    88	      due: DateTime(2026, 11, 20),
+    89	      txns: [utang(45000, DateTime(2026, 11, 1))],
+    90	    );
+    91	    expect(msg, contains('Pak Budi'));
+    92	    expect(msg, contains('Rp 45.000'));
+    93	    expect(msg, contains('20 Nov 2026'));
+    94	  });
+    95	
+    96	
+    97	  test('pembayaran berlebih menghasilkan saldo piutang', () {
+    98	    final txns = [
+    99	      utang(100000, DateTime(2026, 1, 1)),
+   100	      bayar(150000, DateTime(2026, 1, 2)),
+   101	    ];
+   102	
+   103	    expect(computeBalance(txns), -50000);
+   104	
+   105	    final customer = Customer(
+   106	      id: 1,
+   107	      name: 'Bu Ani',
+   108	      createdAt: DateTime(2026, 1, 1),
+   109	    );
+   110	
+   111	    final summary = CustomerSummary(
+   112	      customer: customer,
+   113	      balance: computeBalance(txns),
+   114	    );
+   115	
+   116	    expect(summary.status(), DebtStatus.piutang);
+   117	  });
+   118	
+   119	  test('kredit lama mengurangi utang baru', () {
+   120	    final txns = [
+   121	      utang(100000, DateTime(2026, 1, 1)),
+   122	      bayar(150000, DateTime(2026, 1, 2)),
+   123	      utang(70000, DateTime(2026, 1, 3),
+   124	          due: DateTime(2026, 1, 20)),
+   125	    ];
+   126	
+   127	    expect(computeBalance(txns), 20000);
+   128	    expect(nextDueDate(txns), DateTime(2026, 1, 20));
+   129	  });
+   130	
+   131	  test('saldo negatif tidak dianggap siklus lunas', () {
+   132	    final txns = [
+   133	      utang(100000, DateTime(2026, 1, 1)),
+   134	      bayar(150000, DateTime(2026, 1, 2)),
+   135	    ];
+   136	
+   137	    expect(activeDebtCycle(txns), hasLength(2));
+   138	    expect(latestClosedDebtCycle(txns), isEmpty);
+   139	  });
+   140	
+   141	  test('siklus ditutup ketika saldo kembali tepat nol', () {
+   142	    final txns = [
+   143	      utang(100000, DateTime(2026, 1, 1)),
+   144	      bayar(150000, DateTime(2026, 1, 2)),
+   145	      utang(70000, DateTime(2026, 1, 3)),
+   146	      bayar(20000, DateTime(2026, 1, 4)),
+   147	    ];
+   148	
+   149	    expect(computeBalance(txns), 0);
+   150	    expect(activeDebtCycle(txns), isEmpty);
+   151	    expect(latestClosedDebtCycle(txns), hasLength(4));
+   152	  });
+   153	
+   154	  test('waUri menyandikan teks', () {
+   155	    final uri = waUri('08123456789', 'Halo dunia');
+   156	    expect(uri.host, 'wa.me');
+   157	    expect(uri.path, '/628123456789');
+   158	    expect(uri.queryParameters['text'], 'Halo dunia');
+   159	  });
+   160	}
 
-===== PEMERIKSAAN PATCH =====
-
-===== STATUS GIT =====
- M .github/workflows/build-apk.yml
- M lib/models.dart
- M lib/screens/customer_screen.dart
- M lib/screens/home_screen.dart
- M lib/screens/settings_screen.dart
- M lib/services/backup_status.dart
- M lib/services/google_drive_service.dart
- M lib/status_style.dart
- M lib/utils.dart
- M lib/widgets/backup_indicator.dart
- M pubspec.yaml
- M test/utils_test.dart
-?? add_backup_indicator.sh
-?? backup_app_lock_integrity_20261116_210514/
-?? backup_app_lock_recovery_20261116_210009/
-?? backup_app_lock_safe_20261116_205501/
-?? backup_app_lock_safe_20261116_205635/
-?? backup_app_lock_safe_20261116_205712/
-?? backup_app_lock_storage_20261116_211528/
-?? backup_auto_backup_dependencies_20261116_234527/
-?? backup_backup_status_race_20261116_231910/
-?? backup_before_revert_lightweight_20261115_133121/
-?? backup_cloud_reconnect_20261115_133235/
-?? backup_diagnostik_google_20261115_111942/
-?? backup_fix_google_import_20261115_104148/
-?? backup_google_lightweight_restore_20261116_233447/
-?? backup_google_login_20261114_185251/
-?? backup_google_restore_20261115_132224/
-?? backup_google_session_20261115_102650/
-?? backup_google_session_fix_20261115_123805/
-?? backup_google_session_fix_20261115_124655/
-?? backup_guard_whatsapp_20261116_230413/
-?? backup_guard_whatsapp_20261116_230532/
-?? backup_guard_whatsapp_v2_20261116_230720/
-?? backup_listener_google_20261115_125040/
-?? backup_pengaturan_warung_20261116_222928/
-?? backup_png_filename_20261117_061635/
-?? backup_remove_app_lock_20261116_213512/
-?? backup_remove_app_lock_20261116_213908/
-?? backup_saldo_piutang_20261116_221958/
-?? backup_sebelum_cloud_ui_20261114_225058/
-?? backup_sebelum_cloud_ui_20261114_225846/
-?? backup_sebelum_fix_sqlite_20261114_231957/
-?? backup_sebelum_google_20261114_184301/
-?? backup_sebelum_integrasi_drive_20261114_221515/
-?? backup_sebelum_pin_ffi_20261114_230953/
-?? backup_sebelum_pin_shared_preferences_20261115_124930/
-?? backup_sebelum_settings_20261114_164203/
-?? backup_sebelum_test_restore_20261114_230544/
-?? backup_sebelum_update_siklus/
-?? backup_sebelum_whatsapp_gambar_20261116_221203/
-?? backup_settings_warung_ui_20261116_223241/
-?? backup_status_google_20261114_192221/
-?? backup_switch_png_20261117_062447/
-?? backup_whatsapp_newline_20261116_225847/
-?? fix_diag.sh
-?? fix_google_session.sh
-?? fix_ux.sh
-?? lib/screens/receipt_image_screen.dart
-?? lib/services/shop_message_settings.dart
-?? patch_google_session.py
-?? patchv3.py
-?? tambah_fitur.sh
-?? test/utils_test.dart.backup_20261117_070428
-
-===== KETERSEDIAAN FLUTTER DAN DART =====
-Flutter belum tersedia
-Dart belum tersedia
+===== PATCH CHECK =====
